@@ -10,9 +10,10 @@ COPY apps/admin-api/package.json apps/admin-api/
 COPY apps/webmail-api/package.json apps/webmail-api/
 COPY apps/frontend/package.json apps/frontend/
 
-# Install with devDependencies (prisma, tsx). NODE_ENV is set to production AFTER
-# this so the dev tooling needed to generate/run is available.
-RUN npm install
+# Install WITH devDependencies — prisma (build) and tsx (runtime) live there.
+# Pin NODE_ENV=development + --include=dev for this layer so nothing in the build
+# environment can omit them (that caused 'sh: prisma: not found').
+RUN NODE_ENV=development npm install --include=dev --no-audit --no-fund
 
 # Source for the parts this image runs.
 COPY packages/db packages/db
