@@ -105,6 +105,23 @@ fi
 
 [[ -n "$DOMAIN" ]] || die "DOMAIN missing from .env — delete .env and re-run."
 
+# Seeding credentials are never written to disk, so on a re-run (existing .env)
+# we must (re)collect them. seed.ts is idempotent (upsert), so re-entering is safe.
+if [[ -z "${SEED_ADMIN_PASSWORD:-}" ]]; then
+  log "Admin/portal login credentials (used to create or update the accounts):"
+  SEED_ADMIN_EMAIL="${ACME_EMAIL:-}"
+  [[ -n "$SEED_ADMIN_EMAIL" ]] || read -rp "Admin email: " SEED_ADMIN_EMAIL
+  read -rsp "Admin password for ${SEED_ADMIN_EMAIL}: " SEED_ADMIN_PASSWORD; echo
+  [[ -n "$SEED_ADMIN_PASSWORD" ]] || die "Admin password is required to seed the login."
+  read -rp "Reseller portal email (blank to skip): " SEED_RESELLER_EMAIL || true
+  if [[ -n "${SEED_RESELLER_EMAIL:-}" ]]; then read -rsp "Reseller password: " SEED_RESELLER_PASSWORD; echo; fi
+  read -rp "Customer portal email (blank to skip): " SEED_CUSTOMER_EMAIL || true
+  if [[ -n "${SEED_CUSTOMER_EMAIL:-}" ]]; then read -rsp "Customer password: " SEED_CUSTOMER_PASSWORD; echo; fi
+  export SEED_ADMIN_EMAIL SEED_ADMIN_PASSWORD \
+         SEED_RESELLER_EMAIL="${SEED_RESELLER_EMAIL:-}" SEED_RESELLER_PASSWORD="${SEED_RESELLER_PASSWORD:-}" \
+         SEED_CUSTOMER_EMAIL="${SEED_CUSTOMER_EMAIL:-}" SEED_CUSTOMER_PASSWORD="${SEED_CUSTOMER_PASSWORD:-}"
+fi
+
 SUDO=""; [[ $EUID -eq 0 ]] || SUDO="sudo"
 
 # ── 3. Build & deploy the Docker stack ────────────────────────

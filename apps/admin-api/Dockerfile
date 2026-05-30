@@ -2,18 +2,26 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 
-# Workspace manifests first for layer caching.
+# Prisma's query engine needs openssl at generate + runtime on Alpine/musl.
+RUN apk add --no-cache openssl
+
+# Copy ALL workspace manifests first so npm can resolve the full workspace graph
+# (without every manifest, npm fails to install the @ezmails/db devDeps → no prisma CLI).
 COPY package.json package-lock.json* ./
 COPY packages/db/package.json packages/db/
 COPY apps/admin-api/package.json apps/admin-api/
+COPY apps/webmail-api/package.json apps/webmail-api/
+COPY apps/frontend/package.json apps/frontend/
 
-RUN npm install --workspaces --include-workspace-root || npm install
+# Install with devDependencies (prisma, tsx). NODE_ENV is set to production AFTER
+# this so the dev tooling needed to generate/run is available.
+RUN npm install
 
-# Source
+# Source for the parts this image runs.
 COPY packages/db packages/db
 COPY apps/admin-api apps/admin-api
 
-# Generate Prisma client against the schema.
+# Generate the Prisma client against the schema.
 RUN npm run generate -w @ezmails/db
 
 ENV NODE_ENV=production
