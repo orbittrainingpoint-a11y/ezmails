@@ -1,0 +1,26 @@
+# Dovecot → PostgreSQL: authentication + user lookup.
+# Reads the same mailboxes/domains tables the API writes to. No MariaDB.
+
+driver = pgsql
+connect = host=postgres port=5432 dbname=ezmails user=ezmails_mail password=CHANGE_ME
+
+# Passwords are stored with an explicit {BLF-CRYPT} scheme prefix by the API,
+# which Dovecot honours per-record regardless of this default.
+default_pass_scheme = BLF-CRYPT
+
+password_query = \
+  SELECT email AS user, password \
+  FROM mailboxes \
+  WHERE email = '%u' AND status = 'active'
+
+# Home/maildir resolved from the mailbox row; fixed vmail uid/gid (5000).
+user_query = \
+  SELECT '/var/mail/vhosts/' || maildir AS home, \
+         'maildir:/var/mail/vhosts/' || maildir AS mail, \
+         5000 AS uid, 5000 AS gid, \
+         '*:bytes=' || quota AS quota_rule \
+  FROM mailboxes \
+  WHERE email = '%u' AND status = 'active'
+
+# Used by ManageSieve / LMTP to verify a recipient exists.
+iterate_query = SELECT email AS user FROM mailboxes WHERE status = 'active'

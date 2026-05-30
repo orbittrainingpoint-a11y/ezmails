@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+certs/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Prisma
+packages/db/prisma/migrations/dev.db*
+
+# Runtime data (mail, db volumes when bind-mounted)
+data/
+mailboxes/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db

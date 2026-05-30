@@ -1,0 +1,11 @@
+# Postfix → PostgreSQL: alias + forwarder resolution.
+# UNION of aliases (internal routing) and forwarders (external addresses).
+# Wildcard aliases (*@domain) are handled by a separate domain-catchall lookup.
+hosts = postgres
+port = 5432
+user = ezmails_mail
+password = CHANGE_ME
+dbname = ezmails
+query = SELECT destination FROM aliases WHERE source='%s' AND is_active = true
+        UNION
+        SELECT destination FROM forwarders WHERE source='%s' AND is_active = true

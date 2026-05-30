@@ -1,0 +1,63 @@
+# ezmails Postfix main.cf — values with __PLACEHOLDER__ are filled by entrypoint.sh.
+
+myhostname = __MAIL_HOSTNAME__
+mydomain = __MAIL_HOSTNAME__
+myorigin = $myhostname
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+compatibility_level = 3.6
+
+# Only deliver for virtual domains; no local Unix mailboxes.
+mydestination =
+mynetworks = 127.0.0.0/8 [::1]/128 172.16.0.0/12
+inet_interfaces = all
+inet_protocols = all
+
+# ── Virtual mailbox / alias resolution via PostgreSQL ──
+virtual_mailbox_domains = pgsql:/etc/postfix/pgsql/virtual-mailbox-domains.cf
+virtual_mailbox_maps    = pgsql:/etc/postfix/pgsql/virtual-mailbox-maps.cf
+virtual_alias_maps      = pgsql:/etc/postfix/pgsql/virtual-alias-maps.cf
+
+# Hand local delivery to Dovecot over LMTP.
+virtual_transport = lmtp:inet:dovecot:24
+
+# ── Rspamd milter (spam scoring + DKIM signing) ──
+smtpd_milters       = inet:rspamd:11332
+non_smtpd_milters   = inet:rspamd:11332
+milter_protocol     = 6
+milter_mail_macros  = i {mail_addr} {client_addr} {client_name} {auth_authen}
+milter_default_action = accept
+
+# ── TLS ──
+smtpd_tls_cert_file = /etc/letsencrypt/live/__MAIL_HOSTNAME__/fullchain.pem
+smtpd_tls_key_file  = /etc/letsencrypt/live/__MAIL_HOSTNAME__/privkey.pem
+smtpd_tls_security_level = may
+smtp_tls_security_level  = may
+smtpd_tls_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1
+smtpd_tls_mandatory_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1
+smtp_tls_protocols  = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1
+tls_preempt_cipherlist = yes
+
+# ── SASL auth handled by Dovecot (for submission) ──
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = inet:dovecot:12345
+smtpd_sasl_auth_enable = no
+
+# ── Restrictions ──
+smtpd_recipient_restrictions =
+  permit_mynetworks,
+  permit_sasl_authenticated,
+  reject_unauth_destination
+
+smtpd_relay_restrictions =
+  permit_mynetworks,
+  permit_sasl_authenticated,
+  reject_unauth_destination
+
+# Size + rate limits
+message_size_limit = 31457280
+smtpd_client_message_rate_limit = 100
+anvil_rate_time_unit = 60s
+
+maillog_file = /dev/stdout

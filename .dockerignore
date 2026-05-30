@@ -1,0 +1,12 @@
+# Keep Docker build contexts small & reproducible.
+**/node_modules
+**/dist
+**/.turbo
+.git
+certs
+*.log
+**/.env
+.env
+.env.*
+!.env.example
+**/*.tsbuildinfo

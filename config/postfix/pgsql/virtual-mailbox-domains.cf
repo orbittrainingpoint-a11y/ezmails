@@ -1,0 +1,7 @@
+# Postfix → PostgreSQL: which domains we accept mail for.
+hosts = postgres
+port = 5432
+user = ezmails_mail
+password = CHANGE_ME
+dbname = ezmails
+query = SELECT domain_name FROM domains WHERE domain_name='%s' AND is_active = true

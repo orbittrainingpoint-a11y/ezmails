@@ -1,0 +1,640 @@
+// ezmails — unified PostgreSQL schema.
+// Holds BOTH application data and the mail-server tables that Postfix &
+// Dovecot query directly (via SQL maps / pgsql driver). One DB, no MariaDB.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum UserRole {
+  super_admin
+  reseller
+  customer
+}
+
+enum NodeStatus {
+  online
+  offline
+  maintenance
+}
+
+enum DomainSource {
+  vps_hosted
+  external
+}
+
+enum DnsRecordType {
+  MX
+  SPF
+  DKIM
+  DMARC
+  A
+  PTR
+}
+
+enum DnsStatus {
+  valid
+  missing
+  incorrect
+  propagating
+  unchecked
+}
+
+enum MailboxStatus {
+  active
+  suspended
+}
+
+enum MailLogStatus {
+  delivered
+  bounced
+  deferred
+  rejected
+}
+
+enum NotificationLevel {
+  info
+  warning
+  critical
+}
+
+enum BackupStatus {
+  scheduled
+  running
+  success
+  failed
+}
+
+enum AccessAction {
+  allow
+  deny
+}
+
+enum AccessKind {
+  ip
+  domain
+}
+
+// ─────────────────────── Identity & access ───────────────────────
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique @db.VarChar(255)
+  displayName  String?  @map("display_name") @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         UserRole
+  totpSecret   String?  @map("totp_secret") @db.VarChar(255) // AES-256-GCM encrypted
+  totpEnabled  Boolean  @default(false) @map("totp_enabled")
+  parentId     String?  @map("parent_id") @db.Uuid // reseller's admin / customer's reseller
+  isActive     Boolean  @default(true) @map("is_active")
+
+  // Reseller / customer quota fields (null for super_admin)
+  maxCustomers Int?    @map("max_customers")
+  maxDomains   Int?    @map("max_domains")
+  storagePool  BigInt? @map("storage_pool") // total bytes a reseller may allocate
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  parent              User?          @relation("UserHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children            User[]         @relation("UserHierarchy")
+  ownedDomains        Domain[]       @relation("DomainOwner")
+  sessions            Session[]
+  auditLogs           AuditLog[]
+  apiTokens           ApiToken[]
+  notifications       Notification[]
+  contacts            Contact[]
+  backupRecoveryCodes RecoveryCode[]
+
+  @@index([parentId])
+  @@index([role])
+  @@map("users")
+}
+
+model RecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash") @db.VarChar(64)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
+}
+
+model Session {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  tokenHash  String   @unique @map("token_hash") @db.VarChar(64)
+  ipAddress  String?  @map("ip_address") @db.Inet
+  userAgent  String?  @map("user_agent")
+  rememberMe Boolean  @default(false) @map("remember_me")
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model ApiToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  name       String    @db.VarChar(100)
+  tokenHash  String    @unique @map("token_hash") @db.VarChar(64)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_tokens")
+}
+
+// ─────────────────────── Infrastructure ───────────────────────
+
+model Node {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String     @db.VarChar(100)
+  hostname  String     @unique @db.VarChar(255)
+  ipAddress String     @map("ip_address") @db.Inet
+  sshPort   Int        @default(22) @map("ssh_port")
+  sshKeyId  String?    @map("ssh_key_id") @db.Uuid
+  status    NodeStatus @default(online)
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz
+
+  domains Domain[]
+
+  @@map("nodes")
+}
+
+// ─────────────────────── Domains & DNS ───────────────────────
+
+model Domain {
+  id              String       @id @default(uuid()) @db.Uuid
+  domainName      String       @unique @map("domain_name") @db.VarChar(255)
+  nodeId          String?      @map("node_id") @db.Uuid
+  ownerId         String?      @map("owner_id") @db.Uuid
+  maxMailboxes    Int          @default(100) @map("max_mailboxes")
+  storageQuota    BigInt       @default(10737418240) @map("storage_quota") // 10 GB
+  sendRate        Int          @default(500) @map("send_rate") // msgs/hour
+  catchAll        String?      @map("catch_all") @db.VarChar(255)
+  isActive        Boolean      @default(true) @map("is_active")
+  webmailEnabled  Boolean      @default(true) @map("webmail_enabled")
+  sourceType      DomainSource @default(vps_hosted) @map("source_type")
+  suspendReason   String?      @map("suspend_reason")
+  spamTagScore    Int?         @map("spam_tag_score")
+  spamRejectScore Int?         @map("spam_reject_score")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  node         Node?         @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  owner        User?         @relation("DomainOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  dnsRecords   DnsRecord[]
+  dkimKeys     DkimKey[]
+  mailboxes    Mailbox[]
+  aliases      Alias[]
+  forwarders   Forwarder[]
+  mailingLists MailingList[]
+  accessRules  AccessRule[]
+
+  @@index([domainName])
+  @@index([ownerId])
+  @@index([nodeId])
+  @@map("domains")
+}
+
+model DnsRecord {
+  id            String        @id @default(uuid()) @db.Uuid
+  domainId      String        @map("domain_id") @db.Uuid
+  recordType    DnsRecordType @map("record_type")
+  hostname      String?       @db.VarChar(255)
+  expectedValue String        @map("expected_value")
+  actualValue   String?       @map("actual_value")
+  status        DnsStatus     @default(unchecked)
+  lastChecked   DateTime?     @map("last_checked") @db.Timestamptz
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([domainId])
+  @@map("dns_records")
+}
+
+model DkimKey {
+  id         String   @id @default(uuid()) @db.Uuid
+  domainId   String   @map("domain_id") @db.Uuid
+  selector   String   @db.VarChar(64)
+  privateKey String   @map("private_key") // AES-256-GCM encrypted at rest
+  publicKey  String   @map("public_key")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([domainId])
+  @@map("dkim_keys")
+}
+
+// ─────────────────────── Mail entities ───────────────────────
+// These tables are queried directly by Postfix (pgsql maps) and Dovecot (pgsql driver).
+
+model Mailbox {
+  id          String        @id @default(uuid()) @db.Uuid
+  domainId    String        @map("domain_id") @db.Uuid
+  email       String        @unique @db.VarChar(255)
+  localPart   String        @map("local_part") @db.VarChar(255)
+  displayName String?       @map("display_name") @db.VarChar(255)
+  password    String        @db.VarChar(255) // Dovecot {SHA512-CRYPT}
+  quota       BigInt        @default(1073741824) // 1 GB
+  maildir     String        @db.VarChar(512) // relative maildir path: domain/local/
+  sendLimit   Int?          @map("send_limit") // msgs/hour, null = use domain default
+  recvLimit   Int?          @map("recv_limit")
+  status      MailboxStatus @default(active)
+  lastLoginAt DateTime?     @map("last_login_at") @db.Timestamptz
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([domainId])
+  @@index([email])
+  @@map("mailboxes")
+}
+
+model Alias {
+  id          String   @id @default(uuid()) @db.Uuid
+  domainId    String   @map("domain_id") @db.Uuid
+  source      String   @db.VarChar(255) // e.g. sales@domain.com or *@domain.com
+  destination String   @db.VarChar(255) // comma-separated targets
+  isWildcard  Boolean  @default(false) @map("is_wildcard")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([domainId])
+  @@index([source])
+  @@map("aliases")
+}
+
+model Forwarder {
+  id          String   @id @default(uuid()) @db.Uuid
+  domainId    String   @map("domain_id") @db.Uuid
+  source      String   @db.VarChar(255)
+  destination String   @db.VarChar(255) // external address
+  keepCopy    Boolean  @default(false) @map("keep_copy")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([domainId])
+  @@index([source])
+  @@map("forwarders")
+}
+
+model MailingList {
+  id        String   @id @default(uuid()) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  address   String   @unique @db.VarChar(255)
+  name      String   @db.VarChar(255)
+  moderated Boolean  @default(false)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  domain  Domain              @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  members MailingListMember[]
+
+  @@index([domainId])
+  @@map("mailing_lists")
+}
+
+model MailingListMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  listId    String   @map("list_id") @db.Uuid
+  email     String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  list MailingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, email])
+  @@map("mailing_list_members")
+}
+
+// ─────────────────────── Observability ───────────────────────
+
+model MailLog {
+  id        String        @id @default(uuid()) @db.Uuid
+  queueId   String?       @map("queue_id") @db.VarChar(64)
+  sender    String        @db.VarChar(255)
+  recipient String        @db.VarChar(255)
+  status    MailLogStatus
+  sizeBytes Int?          @map("size_bytes")
+  relay     String?       @db.VarChar(255)
+  delayMs   Int?          @map("delay_ms")
+  spamScore Float?        @map("spam_score")
+  detail    String? // bounce/defer reason, full trace
+  nodeId    String?       @map("node_id") @db.Uuid
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([queueId])
+  @@index([sender])
+  @@index([recipient])
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("mail_log")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  action       String   @db.VarChar(100)
+  resourceType String?  @map("resource_type") @db.VarChar(50)
+  resourceId   String?  @map("resource_id") @db.Uuid
+  metadata     Json?
+  ipAddress    String?  @map("ip_address") @db.Inet
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_log")
+}
+
+model Notification {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String?           @map("user_id") @db.Uuid // null = broadcast to all admins
+  level          NotificationLevel @default(info)
+  message        String
+  resourceType   String?           @map("resource_type") @db.VarChar(50)
+  resourceId     String?           @map("resource_id") @db.Uuid
+  acknowledgedAt DateTime?         @map("acknowledged_at") @db.Timestamptz
+  dismissedAt    DateTime?         @map("dismissed_at") @db.Timestamptz
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ─────────────────────── Webmail data ───────────────────────
+
+model Contact {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String   @db.VarChar(255)
+  emails    Json // string[]
+  phone     String?  @db.VarChar(64)
+  notes     String?
+  labels    Json? // string[]
+  useCount  Int      @default(0) @map("use_count")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("contacts")
+}
+
+// Webmail address book — scoped to a mailbox (end-user), not an admin User.
+model WebmailContact {
+  id        String   @id @default(uuid()) @db.Uuid
+  mailboxId String   @map("mailbox_id") @db.Uuid
+  name      String   @db.VarChar(255)
+  emails    Json // string[]
+  phone     String?  @db.VarChar(64)
+  notes     String?
+  labels    Json? // string[]
+  useCount  Int      @default(0) @map("use_count")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([mailboxId])
+  @@map("webmail_contacts")
+}
+
+// Per-mailbox webmail preferences: signatures, vacation responder, 2FA, UI prefs.
+model WebmailSettings {
+  mailboxId       String    @id @map("mailbox_id") @db.Uuid
+  signatureHtml   String?   @map("signature_html")
+  vacationEnabled Boolean   @default(false) @map("vacation_enabled")
+  vacationStart   DateTime? @map("vacation_start") @db.Timestamptz
+  vacationEnd     DateTime? @map("vacation_end") @db.Timestamptz
+  vacationSubject String?   @map("vacation_subject")
+  vacationMessage String?   @map("vacation_message")
+  // Webmail 2FA (Google Authenticator / TOTP).
+  totpSecret      String?   @map("totp_secret") // AES-256-GCM encrypted
+  totpEnabled     Boolean   @default(false) @map("totp_enabled")
+  recoveryCodes   Json?     @map("recovery_codes") // array of sha256-hashed codes
+  prefs           Json?
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("webmail_settings")
+}
+
+// Dev-only mail store: backs the webmail (folders/read/send) when no real
+// IMAP/SMTP server is available (WEBMAIL_DEV_BYPASS_IMAP). One row per message
+// per mailbox-folder. `uid` is unique per mailbox so move keeps the same uid.
+model DevMail {
+  id          String   @id @default(uuid()) @db.Uuid
+  mailboxId   String   @map("mailbox_id") @db.Uuid
+  folder      String   @db.VarChar(64)
+  uid         Int
+  messageId   String   @map("message_id") @db.VarChar(255)
+  fromName    String?  @map("from_name") @db.VarChar(255)
+  fromAddr    String   @map("from_addr") @db.VarChar(255)
+  toJson      Json     @map("to_json")
+  ccJson      Json?    @map("cc_json")
+  subject     String
+  html        String?
+  text        String?
+  seen        Boolean  @default(false)
+  flagged     Boolean  @default(false)
+  attachments Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([mailboxId, folder])
+  @@map("dev_mail")
+}
+
+// Outlook-style inbox rules: move/flag messages that match conditions.
+model WebmailRule {
+  id           String   @id @default(uuid()) @db.Uuid
+  mailboxId    String   @map("mailbox_id") @db.Uuid
+  name         String   @db.VarChar(255)
+  enabled      Boolean  @default(true)
+  matchType    String   @default("all") @map("match_type") @db.VarChar(8) // "all" | "any"
+  conditions   Json // [{ field:"from"|"to"|"subject"|"body", op:"contains"|"equals"|"startsWith", value }]
+  targetFolder String   @map("target_folder") @db.VarChar(255)
+  markRead     Boolean  @default(false) @map("mark_read")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([mailboxId])
+  @@map("webmail_rules")
+}
+
+// Sticky notes attached to a specific email (by RFC Message-ID). Many per email.
+model WebmailNote {
+  id        String   @id @default(uuid()) @db.Uuid
+  mailboxId String   @map("mailbox_id") @db.Uuid
+  messageId String   @map("message_id") @db.VarChar(998) // email Message-ID header
+  title     String?  @db.VarChar(255)
+  body      String
+  color     String?  @db.VarChar(16)
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([mailboxId, messageId])
+  @@map("webmail_notes")
+}
+
+// ─────────────────────── Titan features ───────────────────────
+
+enum CampaignStatus {
+  draft
+  sending
+  sent
+  failed
+}
+
+enum RecipientStatus {
+  pending
+  sent
+  failed
+  opened
+}
+
+// Email Campaigns — bulk personalized sends with open tracking.
+model Campaign {
+  id        String         @id @default(uuid()) @db.Uuid
+  mailboxId String         @map("mailbox_id") @db.Uuid
+  name      String         @db.VarChar(255)
+  subject   String         @db.VarChar(500)
+  bodyHtml  String         @map("body_html")
+  status    CampaignStatus @default(draft)
+  sentAt    DateTime?      @map("sent_at") @db.Timestamptz
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  recipients CampaignRecipient[]
+
+  @@index([mailboxId])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id         String          @id @default(uuid()) @db.Uuid
+  campaignId String          @map("campaign_id") @db.Uuid
+  email      String          @db.VarChar(255)
+  name       String?         @db.VarChar(255)
+  fields     Json? // extra CSV columns for {{merge}} tags
+  status     RecipientStatus @default(pending)
+  openToken  String          @unique @map("open_token") @db.VarChar(64)
+  sentAt     DateTime?       @map("sent_at") @db.Timestamptz
+  openedAt   DateTime?       @map("opened_at") @db.Timestamptz
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@map("campaign_recipients")
+}
+
+// Titan Bookings — shareable appointment links + booked slots.
+model BookingLink {
+  id           String   @id @default(uuid()) @db.Uuid
+  mailboxId    String   @map("mailbox_id") @db.Uuid
+  slug         String   @unique @db.VarChar(64)
+  title        String   @db.VarChar(255)
+  description  String?
+  durationMins Int      @default(30) @map("duration_mins")
+  timezone     String   @default("UTC") @db.VarChar(64)
+  availability Json // { mon:[["09:00","17:00"]], tue:[...], ... }
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  bookings Booking[]
+
+  @@index([mailboxId])
+  @@map("booking_links")
+}
+
+model Booking {
+  id            String   @id @default(uuid()) @db.Uuid
+  bookingLinkId String   @map("booking_link_id") @db.Uuid
+  name          String   @db.VarChar(255)
+  email         String   @db.VarChar(255)
+  startsAt      DateTime @map("starts_at") @db.Timestamptz
+  endsAt        DateTime @map("ends_at") @db.Timestamptz
+  notes         String?
+  cancelled     Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  link BookingLink @relation(fields: [bookingLinkId], references: [id], onDelete: Cascade)
+
+  @@index([bookingLinkId])
+  @@map("bookings")
+}
+
+// ─────────────────────── Backups ───────────────────────
+
+model BackupJob {
+  id          String       @id @default(uuid()) @db.Uuid
+  scope       String       @db.VarChar(50) // "all" | domain id | mailbox id
+  schedule    String?      @db.VarChar(50) // cron, null = manual
+  destination String // local path or s3 url
+  status      BackupStatus @default(scheduled)
+  sizeBytes   BigInt?      @map("size_bytes")
+  lastRunAt   DateTime?    @map("last_run_at") @db.Timestamptz
+  detail      String?
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("backup_jobs")
+}
+
+// ─────────────────────── Settings & access control ───────────────────────
+
+// Generic key/value config store (spam thresholds, queue alert level, log
+// retention days, etc.). Value is JSON for flexibility.
+model Setting {
+  key       String   @id @db.VarChar(100)
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("settings")
+}
+
+// SPAM-005: allow/deny lists for IPs and domains, global (domainId null) or per-domain.
+model AccessRule {
+  id        String       @id @default(uuid()) @db.Uuid
+  domainId  String?      @map("domain_id") @db.Uuid
+  action    AccessAction
+  kind      AccessKind
+  value     String       @db.VarChar(255)
+  note      String?
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  domain Domain? @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([domainId])
+  @@index([kind, action])
+  @@map("access_rules")
+}

@@ -1,0 +1,8 @@
+# Postfix → PostgreSQL: does this mailbox exist (and is it active)?
+# Returns the maildir path; a non-empty result tells Postfix to accept delivery.
+hosts = postgres
+port = 5432
+user = ezmails_mail
+password = CHANGE_ME
+dbname = ezmails
+query = SELECT maildir FROM mailboxes WHERE email='%s' AND status = 'active'
