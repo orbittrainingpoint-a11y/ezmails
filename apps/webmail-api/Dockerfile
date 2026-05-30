@@ -2,9 +2,6 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Prisma's query engine needs openssl at generate + runtime on Alpine/musl.
-RUN apk add --no-cache openssl
-
 # Copy ALL workspace manifests first so npm can resolve the full workspace graph
 # (without every manifest, npm fails to install the @ezmails/db devDeps → no prisma CLI).
 COPY package.json package-lock.json* ./
