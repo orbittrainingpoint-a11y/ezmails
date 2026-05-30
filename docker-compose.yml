@@ -10,6 +10,7 @@ services:
     build:
       context: .
       dockerfile: apps/admin-api/Dockerfile
+      network: host
     env_file: .env
     ports:
       - "127.0.0.1:3001:3001"
@@ -26,6 +27,7 @@ services:
     build:
       context: .
       dockerfile: apps/webmail-api/Dockerfile
+      network: host
     env_file: .env
     ports:
       - "127.0.0.1:3002:3002"
@@ -39,6 +41,7 @@ services:
   frontend:
     build:
       context: ./apps/frontend
+      network: host
       args:
         # Secret admin base path baked into the SPA at build time.
         VITE_ADMIN_BASE: ${ADMIN_BASE_PATH}
