@@ -10,9 +10,10 @@ compatibility_level = 3.6
 
 # Only deliver for virtual domains; no local Unix mailboxes.
 mydestination =
-mynetworks = 127.0.0.0/8 [::1]/128 172.16.0.0/12
+mynetworks = 127.0.0.0/8 172.16.0.0/12
 inet_interfaces = all
-inet_protocols = all
+# IPv4 only — the Docker network has no IPv6, so "all" causes EADDRNOTAVAIL.
+inet_protocols = ipv4
 
 # ── Virtual mailbox / alias resolution via PostgreSQL ──
 virtual_mailbox_domains = pgsql:/etc/postfix/pgsql/virtual-mailbox-domains.cf
