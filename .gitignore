@@ -5,7 +5,7 @@ node_modules/
 
 # Build output
 dist/
-build/
+/build/
 *.tsbuildinfo
 
 # Env & secrets
@@ -24,9 +24,10 @@ npm-debug.log*
 # Prisma
 packages/db/prisma/migrations/dev.db*
 
-# Runtime data (mail, db volumes when bind-mounted)
-data/
-mailboxes/
+# Runtime data (mail, db volumes when bind-mounted). Root-anchored so they don't
+# accidentally match source folders like apps/frontend/src/features/mailboxes/.
+/data/
+/mailboxes/
 
 # Editor / OS
 .DS_Store
