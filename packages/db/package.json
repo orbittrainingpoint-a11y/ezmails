@@ -2,8 +2,9 @@
   "name": "@ezmails/db",
   "version": "1.0.0",
   "private": true,
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
     "generate": "prisma generate",
     "push": "prisma db push",
