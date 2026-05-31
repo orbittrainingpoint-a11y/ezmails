@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
-import { getDns, validateDns, type DnsRecord, type DnsStatus } from "./api";
+import { RefreshCw, Send } from "lucide-react";
+import { getDns, validateDns, sendDnsInstructions, type DnsRecord, type DnsStatus } from "./api";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { toast } from "@/components/ui/toast";
@@ -17,6 +19,8 @@ const statusTone: Record<DnsStatus, "success" | "danger" | "warning" | "neutral"
 export function DnsWizard({ domainId }: { domainId: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["domains", domainId, "dns"], queryFn: () => getDns(domainId) });
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
 
   const revalidate = useMutation({
     mutationFn: () => validateDns(domainId),
@@ -25,6 +29,12 @@ export function DnsWizard({ domainId }: { domainId: string }) {
       toast.success("DNS re-checked.");
     },
     onError: () => toast.error("Could not check DNS right now."),
+  });
+
+  const send = useMutation({
+    mutationFn: () => sendDnsInstructions(domainId, email.trim(), note.trim() || undefined),
+    onSuccess: () => { toast.success(`DNS instructions sent to ${email.trim()}.`); setEmail(""); setNote(""); },
+    onError: () => toast.error("Could not send the email. Check the mail server is running."),
   });
 
   return (
@@ -55,6 +65,36 @@ export function DnsWizard({ domainId }: { domainId: string }) {
             )}
           </div>
         ))}
+      </div>
+
+      {/* Email these DNS records to the domain owner / customer */}
+      <div className="rounded-md border border-border bg-elevated p-4">
+        <div className="mb-1 text-sm font-medium">Send these DNS settings to the domain owner</div>
+        <p className="mb-3 text-xs text-text-secondary">
+          Email the full list of records to whoever manages this domain’s DNS, so they can add them.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            type="email"
+            placeholder="owner@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="sm:max-w-xs"
+          />
+          <Input
+            placeholder="Optional note to include"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="flex-1"
+          />
+          <Button
+            onClick={() => send.mutate()}
+            loading={send.isPending}
+            disabled={!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())}
+          >
+            <Send className="h-4 w-4" /> Send
+          </Button>
+        </div>
       </div>
     </div>
   );

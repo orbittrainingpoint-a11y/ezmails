@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
   createDomainSchema,
   updateDomainSchema,
   suspendDomainSchema,
   listDomainsQuery,
 } from "../schemas/domain.schema.js";
+import { sendSystemMail } from "../lib/mailer.js";
 import { requireRole } from "../plugins/rbac.js";
 import { domainScope, getScopedDomain } from "../lib/scope.js";
 import { recordAudit } from "../services/audit.service.js";
@@ -135,6 +137,28 @@ export default async function domainRoutes(app: FastifyInstance) {
     return reply.send({ success: true, data: results });
   });
 
+  // ── Email the DNS setup instructions to the domain owner / customer ──
+  app.post("/:id/dns/send", { preHandler: canManage }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const domain = await getScopedDomain(req.user!, id);
+    const { email, note } = z
+      .object({ email: z.string().email(), note: z.string().max(2000).optional() })
+      .parse(req.body);
+    const detail = await getDomainDetail(domain.id);
+    const records = (detail.dnsRecords ?? []) as { recordType: string; hostname: string | null; expectedValue: string }[];
+    const { text, html } = buildDnsEmail(domain.domainName, records, note);
+    await sendSystemMail({ to: email, subject: `DNS setup for ${domain.domainName}`, text, html });
+    await recordAudit({
+      userId: req.user!.id,
+      action: "domain.dns.send",
+      resourceType: "domain",
+      resourceId: id,
+      ipAddress: req.ip,
+      metadata: { email },
+    });
+    return reply.send({ success: true });
+  });
+
   // ── DKIM (DKIM-002/003/004) ──
   app.get("/:id/dkim", async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -156,4 +180,46 @@ export default async function domainRoutes(app: FastifyInstance) {
     });
     return reply.send({ success: true, data: key });
   });
+}
+
+const esc = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Build a clear plain-text + HTML email listing the DNS records to publish. */
+function buildDnsEmail(
+  domainName: string,
+  records: { recordType: string; hostname: string | null; expectedValue: string }[],
+  note?: string,
+) {
+  const text =
+    `Hello,\n\nTo set up email for ${domainName}, please add the following DNS records ` +
+    `at your domain's DNS provider (the place that manages ${domainName}'s nameservers):\n\n` +
+    records.map((r) => `• ${r.recordType}\n   Host/Name: ${r.hostname || "@"}\n   Value: ${r.expectedValue}`).join("\n\n") +
+    `\n\n${note ? note + "\n\n" : ""}After adding them it can take a few hours to take effect. ` +
+    `Once they verify, email for ${domainName} will work.\n`;
+
+  const rows = records
+    .map(
+      (r) =>
+        `<tr>` +
+        `<td style="padding:8px 12px;border:1px solid #e0e0e0;white-space:nowrap"><b>${esc(r.recordType)}</b></td>` +
+        `<td style="padding:8px 12px;border:1px solid #e0e0e0">${esc(r.hostname || "@")}</td>` +
+        `<td style="padding:8px 12px;border:1px solid #e0e0e0;font-family:monospace;word-break:break-all">${esc(r.expectedValue)}</td>` +
+        `</tr>`,
+    )
+    .join("");
+  const html =
+    `<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;line-height:1.5">` +
+    `<p>Hello,</p>` +
+    `<p>To set up email for <b>${esc(domainName)}</b>, add these DNS records at your domain's DNS provider ` +
+    `(wherever <b>${esc(domainName)}</b>'s nameservers are managed):</p>` +
+    `<table style="border-collapse:collapse;font-size:13px">` +
+    `<tr><th style="padding:8px 12px;border:1px solid #e0e0e0;text-align:left;background:#f6f6f6">Type</th>` +
+    `<th style="padding:8px 12px;border:1px solid #e0e0e0;text-align:left;background:#f6f6f6">Host / Name</th>` +
+    `<th style="padding:8px 12px;border:1px solid #e0e0e0;text-align:left;background:#f6f6f6">Value</th></tr>` +
+    `${rows}</table>` +
+    `${note ? `<p>${esc(note)}</p>` : ""}` +
+    `<p style="color:#555">After adding them it can take a few hours to propagate. Once verified, email for ${esc(domainName)} will work.</p>` +
+    `</div>`;
+  return { text, html };
 }

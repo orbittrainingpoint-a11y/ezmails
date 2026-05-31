@@ -70,6 +70,8 @@ export const deleteDomain = (id: string) => api<unknown>(`/domains/${id}`, { met
 export const getDns = (id: string) => api<DnsRecord[]>(`/domains/${id}/dns`);
 export const validateDns = (id: string) =>
   api<{ id: string; recordType: string; status: DnsStatus }[]>(`/domains/${id}/dns/validate`, { method: "POST" });
+export const sendDnsInstructions = (id: string, email: string, note?: string) =>
+  api<unknown>(`/domains/${id}/dns/send`, { method: "POST", body: { email, note } });
 
 export const getDkim = (id: string) => api<DkimKey[]>(`/domains/${id}/dkim`);
 export const rotateDkim = (id: string) => api<DkimKey>(`/domains/${id}/dkim/rotate`, { method: "POST" });
