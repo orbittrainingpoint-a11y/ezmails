@@ -6,7 +6,8 @@ import { PrismaClient, UserRole } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = process.env.SEED_ADMIN_EMAIL;
+  // Emails are stored lowercase to match login, which looks up by email.toLowerCase().
+  const email = process.env.SEED_ADMIN_EMAIL?.toLowerCase();
   const password = process.env.SEED_ADMIN_PASSWORD;
 
   if (!email || !password) {
@@ -34,7 +35,7 @@ async function main() {
   // Optional portal users (reseller / customer) — created only when the installer
   // collected credentials. No demo mailboxes are ever seeded in production.
   let resellerId: string | undefined;
-  const resellerEmail = process.env.SEED_RESELLER_EMAIL;
+  const resellerEmail = process.env.SEED_RESELLER_EMAIL?.toLowerCase();
   const resellerPassword = process.env.SEED_RESELLER_PASSWORD;
   if (resellerEmail && resellerPassword) {
     const resellerHash = await bcrypt.hash(resellerPassword, cost);
@@ -55,7 +56,7 @@ async function main() {
     console.log(`[seed] reseller ready: ${reseller.email}`);
   }
 
-  const customerEmail = process.env.SEED_CUSTOMER_EMAIL;
+  const customerEmail = process.env.SEED_CUSTOMER_EMAIL?.toLowerCase();
   const customerPassword = process.env.SEED_CUSTOMER_PASSWORD;
   if (customerEmail && customerPassword) {
     const customerHash = await bcrypt.hash(customerPassword, cost);
