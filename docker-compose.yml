@@ -50,7 +50,9 @@ services:
     restart: unless-stopped
 
   postfix:
-    build: ./config/postfix
+    build:
+      context: ./config/postfix
+      network: host
     env_file: .env
     ports:
       - "25:25"
@@ -65,7 +67,9 @@ services:
     restart: unless-stopped
 
   dovecot:
-    build: ./config/dovecot
+    build:
+      context: ./config/dovecot
+      network: host
     env_file: .env
     ports:
       - "993:993"
