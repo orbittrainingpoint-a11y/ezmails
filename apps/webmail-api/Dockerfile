@@ -2,6 +2,11 @@
 FROM node:20-alpine
 WORKDIR /app
 
+# Prisma's engine links against OpenSSL, which node:20-alpine doesn't ship.
+# Installed before `prisma generate` so the right musl engine is baked in, and
+# present at runtime so the engine loads (else: "Could not parse schema engine response").
+RUN apk add --no-cache openssl
+
 # All workspace manifests so npm can resolve the workspace graph.
 COPY package.json package-lock.json* ./
 COPY packages/db/package.json packages/db/

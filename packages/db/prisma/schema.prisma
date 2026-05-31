@@ -3,7 +3,9 @@
 // Dovecot query directly (via SQL maps / pgsql driver). One DB, no MariaDB.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Include the Alpine/musl OpenSSL-3 engine so the client runs in the node:20-alpine images.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
