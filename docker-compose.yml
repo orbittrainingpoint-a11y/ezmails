@@ -51,7 +51,12 @@ services:
       - "127.0.0.1:8080:80"
     restart: unless-stopped
 
+  # Mail stack (postfix/dovecot/rspamd/clamav) is opt-in via the "mail" profile.
+  # On a host that already runs a mail server, leave it off (ports 25/465/587/993/995
+  # would clash); webmail runs in DB-backed mode instead. Start with:
+  #   docker compose --profile mail up -d
   postfix:
+    profiles: ["mail"]
     build:
       context: ./config/postfix
       network: host
@@ -69,6 +74,7 @@ services:
     restart: unless-stopped
 
   dovecot:
+    profiles: ["mail"]
     build:
       context: ./config/dovecot
       network: host
@@ -86,6 +92,7 @@ services:
     restart: unless-stopped
 
   rspamd:
+    profiles: ["mail"]
     image: rspamd/rspamd:latest
     volumes:
       - ./config/rspamd:/etc/rspamd/local.d:ro
@@ -96,6 +103,7 @@ services:
     restart: unless-stopped
 
   clamav:
+    profiles: ["mail"]
     image: clamav/clamav:latest
     volumes:
       - clamav-data:/var/lib/clamav
