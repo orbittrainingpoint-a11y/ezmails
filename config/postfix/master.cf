@@ -42,3 +42,5 @@ virtual   unix  -       n       n       -       -       virtual
 lmtp      unix  -       -       y       -       -       lmtp
 anvil     unix  -       -       y       -       1       anvil
 scache    unix  -       -       y       -       1       scache
+# Required by Postfix 3.4+ (logging to stdout in containers).
+postlog   unix-dgram n  -       n       -       1       postlogd
