@@ -19,7 +19,8 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { email },
-    update: {},
+    // Re-running resets the password + ensures the role — lets you recover a lost login.
+    update: { passwordHash, role: UserRole.super_admin },
     create: {
       email,
       displayName: "Administrator",
@@ -36,13 +37,14 @@ async function main() {
   const resellerEmail = process.env.SEED_RESELLER_EMAIL;
   const resellerPassword = process.env.SEED_RESELLER_PASSWORD;
   if (resellerEmail && resellerPassword) {
+    const resellerHash = await bcrypt.hash(resellerPassword, cost);
     const reseller = await prisma.user.upsert({
       where: { email: resellerEmail },
-      update: {},
+      update: { passwordHash: resellerHash, role: UserRole.reseller },
       create: {
         email: resellerEmail,
         displayName: "Reseller",
-        passwordHash: await bcrypt.hash(resellerPassword, cost),
+        passwordHash: resellerHash,
         role: UserRole.reseller,
         maxCustomers: 20,
         maxDomains: 50,
@@ -56,13 +58,14 @@ async function main() {
   const customerEmail = process.env.SEED_CUSTOMER_EMAIL;
   const customerPassword = process.env.SEED_CUSTOMER_PASSWORD;
   if (customerEmail && customerPassword) {
+    const customerHash = await bcrypt.hash(customerPassword, cost);
     const customer = await prisma.user.upsert({
       where: { email: customerEmail },
-      update: {},
+      update: { passwordHash: customerHash, role: UserRole.customer },
       create: {
         email: customerEmail,
         displayName: "Customer",
-        passwordHash: await bcrypt.hash(customerPassword, cost),
+        passwordHash: customerHash,
         role: UserRole.customer,
         ...(resellerId ? { parentId: resellerId } : {}),
       },
