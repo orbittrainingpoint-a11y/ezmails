@@ -11,7 +11,7 @@ export interface ViewerAttachment {
   size: number;
 }
 
-type Kind = "pdf" | "image" | "text" | "csv" | "html" | "other";
+type Kind = "pdf" | "image" | "text" | "csv" | "html" | "docx" | "xlsx" | "other";
 
 function kindOf(a: ViewerAttachment): Kind {
   const ct = (a.contentType || "").toLowerCase();
@@ -19,6 +19,8 @@ function kindOf(a: ViewerAttachment): Kind {
   if (ct.includes("pdf") || ext === "pdf") return "pdf";
   if (ct.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) return "image";
   if (ext === "csv" || ct === "text/csv") return "csv";
+  if (ext === "docx" || ct.includes("wordprocessingml")) return "docx";
+  if (["xlsx", "xls"].includes(ext) || ct.includes("spreadsheetml") || ct.includes("ms-excel")) return "xlsx";
   if (ct.startsWith("text/html") || ext === "html" || ext === "htm") return "html";
   if (ct.startsWith("text/") || ["txt", "log", "md", "json", "xml", "yml", "yaml", "ini", "conf"].includes(ext)) return "text";
   return "other";
@@ -89,6 +91,8 @@ export function AttachmentViewer({
           <img src={url} alt={att.filename} className="max-h-full max-w-full rounded-md object-contain shadow-2xl" />
         )}
         {(kind === "text" || kind === "csv" || kind === "html") && <TextPreview url={url} kind={kind} />}
+        {kind === "docx" && <DocxPreview url={url} filename={att.filename} />}
+        {kind === "xlsx" && <SheetPreview url={url} filename={att.filename} />}
         {kind === "other" && (
           <div className="rounded-lg bg-surface p-8 text-center">
             <FileText className="mx-auto mb-3 h-10 w-10 text-text-secondary" />
@@ -158,5 +162,108 @@ function TextPreview({ url, kind }: { url: string; kind: "text" | "csv" | "html"
   }
   return (
     <pre className="h-full w-full max-w-5xl overflow-auto rounded-md bg-white p-4 text-xs leading-relaxed text-black">{content}</pre>
+  );
+}
+
+function Loading() {
+  return <Loader2 className="h-6 w-6 animate-spin text-white" />;
+}
+function Failed({ url, filename }: { url: string; filename: string }) {
+  return (
+    <div className="rounded-lg bg-surface p-8 text-center">
+      <FileText className="mx-auto mb-3 h-10 w-10 text-text-secondary" />
+      <p className="mb-4 text-sm">Couldn’t render a preview. You can download it instead.</p>
+      <a href={url} download={filename} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover">
+        <Download className="h-4 w-4" /> Download
+      </a>
+    </div>
+  );
+}
+
+/** Word (.docx) preview via mammoth (lazy-loaded). */
+function DocxPreview({ url, filename }: { url: string; filename: string }) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const mammoth = await import("mammoth");
+        const buf = await (await fetch(url, { credentials: "include" })).arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer: buf });
+        if (alive) setHtml(result.value as string);
+      } catch {
+        if (alive) setErr(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, [url]);
+
+  if (err) return <Failed url={url} filename={filename} />;
+  if (html === null) return <Loading />;
+  return (
+    <div className="h-full w-full max-w-3xl overflow-auto rounded-md bg-white px-8 py-6 text-sm leading-relaxed text-black [&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:mb-2 [&_table]:border-collapse [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1 [&_ul]:list-disc [&_ul]:pl-6">
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
+}
+
+/** Excel (.xlsx/.xls) preview via SheetJS (lazy-loaded), with sheet tabs. */
+function SheetPreview({ url, filename }: { url: string; filename: string }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [wb, setWb] = useState<any>(null);
+  const [names, setNames] = useState<string[]>([]);
+  const [active, setActive] = useState(0);
+  const [html, setHtml] = useState<string>("");
+  const [err, setErr] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const XLSX = await import("xlsx");
+        const buf = await (await fetch(url, { credentials: "include" })).arrayBuffer();
+        const book = XLSX.read(buf, { type: "array" });
+        if (!alive) return;
+        setWb(book);
+        setNames(book.SheetNames);
+      } catch {
+        if (alive) setErr(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, [url]);
+
+  useEffect(() => {
+    const name = names[active];
+    if (!wb || !name) return;
+    (async () => {
+      const XLSX = await import("xlsx");
+      setHtml(XLSX.utils.sheet_to_html(wb.Sheets[name]));
+    })();
+  }, [wb, names, active]);
+
+  if (err) return <Failed url={url} filename={filename} />;
+  if (!wb) return <Loading />;
+  return (
+    <div className="flex h-full w-full max-w-5xl flex-col rounded-md bg-white">
+      {names.length > 1 && (
+        <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-200 p-1">
+          {names.map((n, i) => (
+            <button
+              key={n}
+              onClick={() => setActive(i)}
+              className={cn("whitespace-nowrap rounded px-3 py-1 text-xs", i === active ? "bg-primary text-white" : "text-gray-700 hover:bg-gray-100")}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+      <div
+        className="flex-1 overflow-auto p-2 text-xs text-black [&_table]:border-collapse [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
   );
 }

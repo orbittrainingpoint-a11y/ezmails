@@ -8,3 +8,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// mammoth ships no bundled TS types; we only use convertToHtml.
+declare module "mammoth";
