@@ -65,6 +65,8 @@ export function Inbox() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [nav, setNav] = useState<string>("INBOX");
   const [viewer, setViewer] = useState<number | null>(null); // attachment position being previewed
+  const [showHelp, setShowHelp] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   function selectStd(item: (typeof STANDARD)[number]) {
     setUid(null); setSummary(null); setNav(item.key); setSelected(new Set());
@@ -137,6 +139,47 @@ export function Inbox() {
     qc.invalidateQueries({ queryKey: ["wm", "messages", folder] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message.data?.uid]);
+
+  // The currently-visible (filtered) message list — shared by the list render + shortcuts.
+  const visible = (messages.data?.items ?? []).filter((m) => (filter === "unread" ? !m.seen : filter === "starred" ? m.flagged : true));
+
+  // Gmail/Outlook-style keyboard shortcuts.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) {
+        if (e.key === "Escape") t.blur();
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key;
+      if (k === "?") return setShowHelp((v) => !v);
+      if (k === "Escape") { setShowHelp(false); setViewer(null); setUid(null); return; }
+      if (k === "c") { e.preventDefault(); return setCompose({ open: true }); }
+      if (k === "/") { e.preventDefault(); return searchRef.current?.focus(); }
+      if (k === "u") return setUid(null);
+      if (k === "j" || k === "k") {
+        e.preventDefault();
+        if (visible.length === 0) return;
+        const idx = uid === null ? -1 : visible.findIndex((m) => m.uid === uid);
+        const nextIdx = k === "j" ? Math.min(idx + 1, visible.length - 1) : Math.max(idx - 1, 0);
+        const target = visible[nextIdx === -1 ? 0 : nextIdx];
+        if (target) { setUid(target.uid); setSummary(null); }
+        return;
+      }
+      if (uid !== null && message.data) {
+        if (k === "r") reply();
+        else if (k === "a") replyAll();
+        else if (k === "f") forward();
+        else if (k === "e") moveTo(folderByUse("\\Archive", "Archive"));
+        else if (k === "#" || k === "Delete") onTrash(message.data);
+        else if (k === "s") wmFlag(folder, uid, { flagged: !message.data.flagged }).then(refreshList);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, uid, message.data, folder]);
 
   function refreshList() {
     qc.invalidateQueries({ queryKey: ["wm", "messages", folder] });
@@ -264,7 +307,7 @@ export function Inbox() {
         <div className="space-y-2 border-b border-border p-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-            <Input placeholder="Search mail…" className="h-9 pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input ref={searchRef} placeholder="Search mail…  ( / )" className="h-9 pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           <div className="flex items-center justify-between px-1">
             <span className="text-sm font-semibold">{STANDARD.find((s) => s.key === nav)?.label ?? folders.data?.find((f) => f.path === folder)?.name ?? folder}</span>
@@ -307,7 +350,6 @@ export function Inbox() {
           ) : messages.isLoading ? (
             <div className="p-8 text-center"><Spinner className="mx-auto" /></div>
           ) : (() => {
-            const visible = (messages.data?.items ?? []).filter((m) => filter === "unread" ? !m.seen : filter === "starred" ? m.flagged : true);
             if (visible.length === 0) return <p className="p-8 text-center text-sm text-text-secondary">No messages.</p>;
             return visible.map((m) => (
               <div
@@ -449,6 +491,8 @@ export function Inbox() {
        )}
       </div>
 
+      {showHelp && <ShortcutsHelp onClose={() => setShowHelp(false)} />}
+
       {viewer !== null && uid !== null && message.data && (
         <AttachmentViewer
           folder={folder}
@@ -460,6 +504,39 @@ export function Inbox() {
       )}
 
       <Compose open={compose.open} initial={compose.initial} onClose={() => { setCompose({ open: false }); refreshList(); qc.invalidateQueries({ queryKey: ["wm", "scheduled"] }); }} />
+    </div>
+  );
+}
+
+function ShortcutsHelp({ onClose }: { onClose: () => void }) {
+  const groups: { title: string; items: [string, string][] }[] = [
+    { title: "General", items: [["c", "Compose"], ["/", "Search"], ["?", "This help"], ["Esc", "Close / back"]] },
+    { title: "List", items: [["j", "Next email"], ["k", "Previous email"], ["u", "Back to list"]] },
+    { title: "Open email", items: [["r", "Reply"], ["a", "Reply all"], ["f", "Forward"], ["e", "Archive"], ["#", "Delete"], ["s", "Star"]] },
+  ];
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-lg border border-border bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Keyboard shortcuts</h3>
+          <button onClick={onClose}><X className="h-4 w-4" /></button>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {groups.map((g) => (
+            <div key={g.title}>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">{g.title}</div>
+              <div className="space-y-1.5">
+                {g.items.map(([key, label]) => (
+                  <div key={key} className="flex items-center justify-between text-sm">
+                    <span className="text-text-secondary">{label}</span>
+                    <kbd className="rounded border border-border bg-elevated px-1.5 py-0.5 font-mono text-xs">{key}</kbd>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

@@ -67,6 +67,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
   const [aiBusy, setAiBusy] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleAt, setScheduleAt] = useState("");
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -78,6 +79,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     setAttachments([]);
     setScheduleOpen(false);
     setScheduleAt("");
+    setCountdown(null);
     setTimeout(() => {
       if (editorRef.current) editorRef.current.innerHTML = initial?.html ?? "";
       if (initial?.focusBody) editorRef.current?.focus();
@@ -124,7 +126,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     } finally { setAiBusy(false); }
   }
 
-  async function handleSend(when?: string) {
+  async function doSend(when?: string) {
     const toList = to.split(",").map((s) => s.trim()).filter(Boolean);
     if (toList.length === 0) return toast.error("Add at least one recipient.");
     if (when && new Date(when).getTime() <= Date.now()) return toast.error("Pick a future time to schedule.");
@@ -145,6 +147,23 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
       toast.error(e instanceof WmError ? e.message : "Send failed.");
     } finally { setSending(false); }
   }
+
+  // Undo Send: clicking Send starts a short countdown before the message actually goes
+  // out, so it can be canceled. Scheduled sends skip the countdown.
+  const UNDO_SECS = 6;
+  function handleSend(when?: string) {
+    if (when) return doSend(when);
+    const toList = to.split(",").map((s) => s.trim()).filter(Boolean);
+    if (toList.length === 0) return toast.error("Add at least one recipient.");
+    setCountdown(UNDO_SECS);
+  }
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) { setCountdown(null); doSend(); return; }
+    const id = window.setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown]);
 
   function confirmSchedule() {
     if (!scheduleAt) return toast.error("Choose a date and time.");
@@ -264,6 +283,15 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
             <button onClick={() => exec("insertOrderedList")} title="Numbered" className="rounded p-1.5 hover:bg-elevated"><ListOrdered className="h-4 w-4" /></button>
             <button onClick={() => { const u = prompt("Link URL"); if (u) exec("createLink", u); }} title="Link" className="rounded p-1.5 hover:bg-elevated"><Link2 className="h-4 w-4" /></button>
           </div>
+
+          {countdown !== null && (
+            <div className="flex items-center gap-3 border-t border-border bg-primary/10 px-3 py-2 text-sm">
+              <Send className="h-4 w-4 text-primary" />
+              <span className="flex-1">Sending in {countdown}s…</span>
+              <Button size="sm" variant="ghost" onClick={() => setCountdown(null)}>Undo</Button>
+              <Button size="sm" onClick={() => { setCountdown(null); doSend(); }}>Send now</Button>
+            </div>
+          )}
 
           {scheduleOpen && (
             <div className="flex flex-wrap items-end gap-2 border-t border-border bg-elevated px-3 py-2">
