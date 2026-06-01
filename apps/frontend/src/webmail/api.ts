@@ -259,6 +259,14 @@ export const wmUnblockSender = (email: string) => wm<string[]>("/senders/blocked
 
 export const wmImportContacts = (csv: string) => wm<{ imported: number; total: number }>("/contacts/import", { method: "POST", body: { csv } });
 
+export interface ImapImportResult {
+  folders: { folder: string; copied: number; skipped: number }[];
+  copiedTotal: number;
+  capped: boolean;
+}
+export const wmImportImap = (body: { host: string; port: number; secure: boolean; user: string; password: string; maxPerFolder?: number }) =>
+  wm<ImapImportResult>("/import/imap", { method: "POST", body });
+
 // Full webmail settings (extends the slim WmSettings used elsewhere).
 export interface FullSettings extends WmSettings {
   vacationStart?: string | null;

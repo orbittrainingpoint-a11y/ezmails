@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut,
+  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download,
 } from "lucide-react";
 import {
   wmAccount, wmUpdateName, wmChangePassword,
   wmForwarding, wmAddForwarding, wmDeleteForwarding,
   wmBlockedSenders, wmBlockSender, wmUnblockSender,
-  wmImportContacts, wmGetFullSettings, wmSaveSettings, aiStatus, wmLogout, WmError,
+  wmImportContacts, wmImportImap, wmGetFullSettings, wmSaveSettings, aiStatus, wmLogout, WmError,
 } from "./api";
 import { useWebmail } from "./store";
 import { TwoFactor } from "./TwoFactor";
@@ -26,7 +26,7 @@ import { cn } from "@/lib/cn";
 type SectionId =
   | "account" | "notifications" | "security" | "ai"
   | "rules" | "blocked"
-  | "signature" | "vacation" | "forwarding" | "import"
+  | "signature" | "vacation" | "forwarding" | "import" | "importmail"
   | "branding";
 
 const GROUPS: { label: string; items: { id: SectionId; label: string; icon: typeof User }[] }[] = [
@@ -45,6 +45,7 @@ const GROUPS: { label: string; items: { id: SectionId; label: string; icon: type
     { id: "vacation", label: "Vacation Responder", icon: Plane },
     { id: "forwarding", label: "Forwarding", icon: Forward },
     { id: "import", label: "Import Contacts", icon: Upload },
+    { id: "importmail", label: "Import Email", icon: Download },
   ] },
   { label: "About", items: [{ id: "branding", label: "Branding", icon: Info }] },
 ];
@@ -86,6 +87,7 @@ export function Settings() {
           {active === "vacation" && <VacationSection />}
           {active === "forwarding" && <ForwardingSection />}
           {active === "import" && <ImportSection />}
+          {active === "importmail" && <ImportMailSection />}
           {active === "branding" && <BrandingSection />}
         </div>
       </div>
@@ -303,6 +305,72 @@ function ImportSection() {
         <p className="text-sm text-text-secondary">Paste CSV with <code>name,email</code> columns.</p>
         <textarea rows={8} value={csv} onChange={(e) => setCsv(e.target.value)} placeholder="name,email&#10;Jane Doe,jane@example.com" className="w-full rounded-md border border-border bg-surface p-3 font-mono text-xs" />
         <Button onClick={() => imp.mutate()} loading={imp.isPending} disabled={!csv.trim()}><Upload className="h-4 w-4" /> Import</Button>
+      </CardContent></Card>
+    </div>
+  );
+}
+
+const IMPORT_PRESETS: Record<string, { host: string; port: number; secure: boolean }> = {
+  "Titan / Hostinger": { host: "imap.titan.email", port: 993, secure: true },
+  "Gmail": { host: "imap.gmail.com", port: 993, secure: true },
+  "Outlook / Microsoft 365": { host: "outlook.office365.com", port: 993, secure: true },
+  "Zoho": { host: "imap.zoho.com", port: 993, secure: true },
+  "Custom": { host: "", port: 993, secure: true },
+};
+
+function ImportMailSection() {
+  const [preset, setPreset] = useState("Titan / Hostinger");
+  const [host, setHost] = useState(IMPORT_PRESETS["Titan / Hostinger"]!.host);
+  const [port, setPort] = useState(993);
+  const [user, setUser] = useState("");
+  const [password, setPassword] = useState("");
+
+  const imp = useMutation({
+    mutationFn: () => wmImportImap({ host, port, secure: port === 993, user, password }),
+    onSuccess: (r) => toast.success(`Imported ${r.copiedTotal} message(s) across ${r.folders.length} folder(s).${r.capped ? " (Large folders were capped — re-run to continue.)" : ""}`),
+    onError: (e) => toast.error(e instanceof WmError ? e.message : "Import failed."),
+  });
+
+  function applyPreset(name: string) {
+    setPreset(name);
+    const p = IMPORT_PRESETS[name];
+    if (p) { setHost(p.host); setPort(p.port); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold tracking-tight">Import Email</h1>
+      <Card><CardContent className="space-y-4">
+        <p className="text-sm text-text-secondary">
+          Copy all your mail from another account (e.g. Titan) into this mailbox over IMAP. It’s safe to re-run — already-imported messages are skipped.
+        </p>
+        <div>
+          <Label>Provider</Label>
+          <select value={preset} onChange={(e) => applyPreset(e.target.value)} className="h-10 w-full rounded-md border border-border bg-surface px-2 text-sm">
+            {Object.keys(IMPORT_PRESETS).map((n) => <option key={n}>{n}</option>)}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label htmlFor="ih">IMAP host</Label><Input id="ih" value={host} onChange={(e) => setHost(e.target.value)} placeholder="imap.titan.email" /></div>
+          <div><Label htmlFor="ip">Port</Label><Input id="ip" type="number" value={port} onChange={(e) => setPort(Number(e.target.value))} /></div>
+          <div><Label htmlFor="iu">Email (source)</Label><Input id="iu" value={user} onChange={(e) => setUser(e.target.value)} placeholder="you@olddomain.com" /></div>
+          <div><Label htmlFor="ipw">Password (source)</Label><Input id="ipw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+        </div>
+        <Button onClick={() => imp.mutate()} loading={imp.isPending} disabled={!host || !user || !password}>
+          <Download className="h-4 w-4" /> Start import
+        </Button>
+        {imp.isPending && <p className="text-xs text-text-secondary">Copying mail… this can take a minute for large mailboxes. Keep this tab open.</p>}
+        {imp.data && (
+          <div className="rounded-md border border-border bg-surface p-3 text-xs">
+            <div className="mb-1 font-medium">Imported {imp.data.copiedTotal} message(s):</div>
+            {imp.data.folders.map((f) => (
+              <div key={f.folder} className="flex justify-between text-text-secondary">
+                <span>{f.folder}</span><span>{f.copied} copied{f.skipped ? `, ${f.skipped} skipped` : ""}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-[11px] text-text-secondary">Your source password is used only to connect and is not stored. For very large mailboxes, large folders are copied in batches — re-run to continue.</p>
       </CardContent></Card>
     </div>
   );
