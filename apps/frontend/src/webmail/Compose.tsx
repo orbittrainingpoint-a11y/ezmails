@@ -87,6 +87,15 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Undo-send countdown tick. Must stay ABOVE the early return (Rules of Hooks).
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) { setCountdown(null); doSend(); return; }
+    const id = window.setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown]);
+
   if (!open) return null;
 
   const exec = (cmd: string, value?: string) => { document.execCommand(cmd, false, value); editorRef.current?.focus(); };
@@ -163,13 +172,6 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     if (toList.length === 0) return toast.error("Add at least one recipient.");
     setCountdown(UNDO_SECS);
   }
-  useEffect(() => {
-    if (countdown === null) return;
-    if (countdown <= 0) { setCountdown(null); doSend(); return; }
-    const id = window.setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countdown]);
 
   function confirmSchedule() {
     if (!scheduleAt) return toast.error("Choose a date and time.");
