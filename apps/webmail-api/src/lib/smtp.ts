@@ -7,7 +7,11 @@ export interface OutgoingAttachment {
   contentType?: string;
 }
 
-/** Send mail through Postfix submission, authenticating as the mailbox user. */
+/**
+ * Send mail through Postfix submission. Builds the full MIME (with attachments)
+ * ONCE via nodemailer's stream transport, sends that exact raw, and returns it so
+ * the caller can append an identical copy to the Sent folder.
+ */
 export async function sendMail(
   creds: { email: string; password: string },
   message: {
@@ -20,17 +24,8 @@ export async function sendMail(
     text?: string;
     attachments?: OutgoingAttachment[];
   },
-): Promise<{ messageId: string }> {
-  const transport = nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_PORT === 465,
-    auth: { user: creds.email, pass: creds.password },
-    tls: { rejectUnauthorized: env.MAIL_TLS_REJECT_UNAUTHORIZED },
-  });
-
-  // Always include a plain-text alternative (better deliverability — HTML-only
-  // mail scores worse). Derive it from the HTML when the client didn't send one.
+): Promise<{ messageId: string; raw: Buffer }> {
+  // Always include a plain-text alternative (HTML-only mail scores worse with spam filters).
   const text =
     message.text ??
     (message.html
@@ -44,7 +39,7 @@ export async function sendMail(
           .trim()
       : undefined);
 
-  const info = await transport.sendMail({
+  const mailOptions = {
     from: message.from,
     to: message.to,
     cc: message.cc,
@@ -53,6 +48,22 @@ export async function sendMail(
     html: message.html,
     text,
     attachments: message.attachments,
+  };
+
+  // Build the raw message (with attachments) without sending.
+  const builder = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "windows" });
+  const built = await builder.sendMail(mailOptions);
+  const raw = built.message as Buffer;
+
+  // Send the exact raw over the authenticated submission transport.
+  const transport = nodemailer.createTransport({
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure: env.SMTP_PORT === 465,
+    auth: { user: creds.email, pass: creds.password },
+    tls: { rejectUnauthorized: env.MAIL_TLS_REJECT_UNAUTHORIZED },
   });
-  return { messageId: info.messageId };
+  await transport.sendMail({ envelope: built.envelope, raw });
+
+  return { messageId: built.messageId, raw };
 }

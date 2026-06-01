@@ -541,32 +541,49 @@ function ShortcutsHelp({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Renders email HTML in a sandboxed (no-script) iframe that auto-sizes to its content,
- *  so the message reads like a real email instead of a fixed "box". */
+/** Renders email HTML in a sandboxed (no-script) iframe that auto-sizes EXACTLY to its
+ *  content (via ResizeObserver, so images count too). The frame never scrolls internally
+ *  and has no border — the message flows inline, so there's a single page scroll. */
 function MailBody({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(360);
+  const [height, setHeight] = useState(120);
   const doc = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>html,body{margin:0;padding:14px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;line-height:1.55;color:#111;word-break:break-word}
+<style>html,body{margin:0;padding:4px 2px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;line-height:1.55;color:#111;word-break:break-word;overflow:hidden}
 img{max-width:100%;height:auto}a{color:#2563eb}table{max-width:100%}blockquote{border-left:3px solid #ddd;margin:0;padding-left:12px;color:#555}</style></head>
 <body>${html}</body></html>`;
-  function resize() {
-    try {
-      const b = ref.current?.contentDocument?.body;
-      if (b) setHeight(Math.min(Math.max(b.scrollHeight + 28, 160), 6000));
-    } catch { /* cross-origin guard */ }
-  }
+  useEffect(() => {
+    const iframe = ref.current;
+    if (!iframe) return;
+    let ro: ResizeObserver | undefined;
+    const measure = () => {
+      try {
+        const b = iframe.contentDocument?.body;
+        const d = iframe.contentDocument?.documentElement;
+        const h = Math.max(b?.scrollHeight ?? 0, d?.scrollHeight ?? 0);
+        if (h) setHeight(Math.min(Math.max(h + 6, 60), 50000));
+      } catch { /* cross-origin guard */ }
+    };
+    const onLoad = () => {
+      measure();
+      try {
+        const b = iframe.contentDocument?.body;
+        if (b && "ResizeObserver" in window) { ro = new ResizeObserver(measure); ro.observe(b); }
+      } catch { /* ignore */ }
+      [100, 400, 1200].forEach((ms) => setTimeout(measure, ms)); // catch late image loads
+    };
+    iframe.addEventListener("load", onLoad);
+    if (iframe.contentDocument?.readyState === "complete") onLoad();
+    return () => { iframe.removeEventListener("load", onLoad); ro?.disconnect(); };
+  }, [doc]);
   return (
     <iframe
       ref={ref}
       title="message"
-      // allow-same-origin (NOT allow-scripts) → email scripts never run, but the
-      // parent can measure the content to auto-size the frame.
-      sandbox="allow-same-origin"
+      sandbox="allow-same-origin" // no allow-scripts → email JS never runs; parent can measure
       srcDoc={doc}
-      onLoad={() => { resize(); setTimeout(resize, 300); }}
+      scrolling="no"
       style={{ height }}
-      className="w-full rounded-md border border-border bg-white"
+      className="w-full border-0 bg-white"
     />
   );
 }

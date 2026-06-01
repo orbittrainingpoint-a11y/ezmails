@@ -95,8 +95,14 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     if (!files) return;
     const next: Attachment[] = [];
     for (const file of Array.from(files)) {
-      const buf = await file.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      // FileReader handles any size; the old String.fromCharCode(...Uint8Array)
+      // overflowed the call stack for files larger than ~64 KB.
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(((reader.result as string).split(",")[1]) ?? "");
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
       next.push({ filename: file.name, contentBase64: b64, contentType: file.type || "application/octet-stream" });
     }
     setAttachments((a) => [...a, ...next]);

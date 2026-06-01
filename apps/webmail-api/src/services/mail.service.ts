@@ -260,16 +260,11 @@ export async function send(
 ) {
   if (DEV) return dev.send(creds, message);
   const result = await sendMail(creds, { from: creds.email, ...message });
-  // Append a copy to Sent (best-effort).
+  // Append an identical copy (with attachments) to Sent, creating the folder if needed.
   await withImap(creds, async (c) => {
     const sent = await findSpecial(c, "\\Sent", "Sent");
-    const raw = buildRawForSent(creds.email, message);
-    await c.append(sent, raw, ["\\Seen"]).catch(() => {});
+    await c.mailboxCreate(sent).catch(() => {}); // ignore "already exists"
+    await c.append(sent, result.raw, ["\\Seen"]).catch(() => {});
   }).catch(() => {});
-  return result;
-}
-
-function buildRawForSent(from: string, m: { to: string[]; subject: string; html?: string; text?: string }) {
-  const headers = [`From: ${from}`, `To: ${m.to.join(", ")}`, `Subject: ${m.subject}`, "MIME-Version: 1.0", `Content-Type: text/html; charset=utf-8`, "", m.html ?? m.text ?? ""];
-  return Buffer.from(headers.join("\r\n"));
+  return { messageId: result.messageId };
 }
