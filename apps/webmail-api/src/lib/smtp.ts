@@ -29,6 +29,21 @@ export async function sendMail(
     tls: { rejectUnauthorized: env.MAIL_TLS_REJECT_UNAUTHORIZED },
   });
 
+  // Always include a plain-text alternative (better deliverability — HTML-only
+  // mail scores worse). Derive it from the HTML when the client didn't send one.
+  const text =
+    message.text ??
+    (message.html
+      ? message.html
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<br\s*\/?>(?=)/gi, "\n")
+          .replace(/<\/(p|div|h[1-6]|li)>/gi, "\n")
+          .replace(/<[^>]+>/g, "")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim()
+      : undefined);
+
   const info = await transport.sendMail({
     from: message.from,
     to: message.to,
@@ -36,7 +51,7 @@ export async function sendMail(
     bcc: message.bcc,
     subject: message.subject,
     html: message.html,
-    text: message.text,
+    text,
     attachments: message.attachments,
   });
   return { messageId: info.messageId };
