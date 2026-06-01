@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useBootstrapAuth } from "@/features/auth/useBootstrapAuth";
 import { ProtectedRoute } from "./ProtectedRoute";
+import { RoleGate, IndexRedirect } from "./RoleGate";
 import { Toaster } from "@/components/ui/toast";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { MfaPage } from "@/features/auth/MfaPage";
@@ -22,6 +23,26 @@ import { WebmailApp } from "@/webmail/WebmailApp";
 import { WebmailLogin } from "@/webmail/WebmailLogin";
 import { BookingPage } from "@/webmail/BookingPage";
 
+// Shared authenticated pages, role-gated (used by both the secret-path admin router
+// and the dev combined router). Non-permitted roles are bounced to their own home.
+function adminPages() {
+  return (
+    <>
+      <Route index element={<IndexRedirect />} />
+      <Route path="/dashboard" element={<RoleGate roles={["super_admin", "reseller"]}><DashboardPage /></RoleGate>} />
+      <Route path="/domains" element={<RoleGate roles={["super_admin", "reseller"]}><DomainsPage /></RoleGate>} />
+      <Route path="/domains/:id" element={<RoleGate roles={["super_admin", "reseller"]}><DomainDetailPage /></RoleGate>} />
+      <Route path="/mailboxes" element={<MailboxesPage />} />
+      <Route path="/customers" element={<RoleGate roles={["super_admin", "reseller"]}><CustomersPage /></RoleGate>} />
+      <Route path="/nodes" element={<RoleGate roles={["super_admin"]}><NodesPage /></RoleGate>} />
+      <Route path="/queue" element={<RoleGate roles={["super_admin"]}><QueuePage /></RoleGate>} />
+      <Route path="/logs" element={<RoleGate roles={["super_admin"]}><LogsPage /></RoleGate>} />
+      <Route path="/spam" element={<RoleGate roles={["super_admin"]}><SpamPage /></RoleGate>} />
+      <Route path="/settings" element={<SettingsPage />} />
+    </>
+  );
+}
+
 // Secret base path the admin panel is mounted under in production (e.g. "/control-a7f3k9").
 // Injected at build time via VITE_ADMIN_BASE. When empty (local dev), the app falls back to
 // the combined router where the admin panel lives at "/" and webmail at "/webmail".
@@ -36,19 +57,7 @@ function AdminRouting() {
       <Route path="/mfa" element={<MfaPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route element={<ProtectedRoute />}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/domains" element={<DomainsPage />} />
-        <Route path="/domains/:id" element={<DomainDetailPage />} />
-        <Route path="/mailboxes" element={<MailboxesPage />} />
-        <Route path="/customers" element={<CustomersPage />} />
-        <Route path="/nodes" element={<NodesPage />} />
-        <Route path="/queue" element={<QueuePage />} />
-        <Route path="/logs" element={<LogsPage />} />
-        <Route path="/spam" element={<SpamPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Route>
+      <Route element={<ProtectedRoute />}>{adminPages()}</Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -82,19 +91,7 @@ function CombinedRouting() {
       <Route path="/mfa" element={<MfaPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route element={<ProtectedRoute />}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/domains" element={<DomainsPage />} />
-        <Route path="/domains/:id" element={<DomainDetailPage />} />
-        <Route path="/mailboxes" element={<MailboxesPage />} />
-        <Route path="/customers" element={<CustomersPage />} />
-        <Route path="/nodes" element={<NodesPage />} />
-        <Route path="/queue" element={<QueuePage />} />
-        <Route path="/logs" element={<LogsPage />} />
-        <Route path="/spam" element={<SpamPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Route>
+      <Route element={<ProtectedRoute />}>{adminPages()}</Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
