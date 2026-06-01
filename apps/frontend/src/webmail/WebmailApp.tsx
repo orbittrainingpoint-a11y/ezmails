@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, NavLink, Navigate, useNavigate } from "react-router-dom";
-import { Mail, Inbox as InboxIcon, Users, Settings as SettingsIcon, LogOut, Megaphone, CalendarDays, PanelRightOpen, HelpCircle } from "lucide-react";
+import { Mail, Inbox as InboxIcon, Users, Settings as SettingsIcon, LogOut, Megaphone, CalendarDays, PanelRightOpen, HelpCircle, LayoutGrid } from "lucide-react";
 import { wmMe, wmLogout } from "./api";
 import { useWebmail } from "./store";
 import { Inbox } from "./Inbox";
@@ -8,6 +8,7 @@ import { Contacts } from "./Contacts";
 import { Settings } from "./Settings";
 import { Campaigns } from "./Campaigns";
 import { Calendar } from "./Calendar";
+import { Planner } from "./Planner";
 import { CalendarTasks } from "./CalendarTasks";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
@@ -54,6 +55,7 @@ export function WebmailApp() {
           <nav className="flex items-center gap-1">
             <NavLink to="/webmail" end className={navCls}><InboxIcon className="h-4 w-4" /> Mail</NavLink>
             <NavLink to="/webmail/calendar" className={navCls}><CalendarDays className="h-4 w-4" /> Calendar</NavLink>
+            <NavLink to="/webmail/planner" className={navCls}><LayoutGrid className="h-4 w-4" /> Planner</NavLink>
             <NavLink to="/webmail/contacts" className={navCls}><Users className="h-4 w-4" /> Contacts</NavLink>
             <NavLink to="/webmail/settings" className={navCls}><SettingsIcon className="h-4 w-4" /> Settings</NavLink>
           </nav>
@@ -73,6 +75,7 @@ export function WebmailApp() {
           <Routes>
             <Route index element={<Inbox />} />
             <Route path="calendar" element={<Calendar />} />
+            <Route path="planner" element={<Planner />} />
             <Route path="campaigns" element={<Campaigns />} />
             <Route path="contacts" element={<Contacts />} />
             <Route path="settings" element={<Settings />} />
