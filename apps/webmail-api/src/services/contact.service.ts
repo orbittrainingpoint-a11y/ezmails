@@ -20,11 +20,23 @@ export async function deleteContact(mailboxId: string, id: string) {
   await prisma.webmailContact.deleteMany({ where: { id, mailboxId } });
 }
 
-/** Bump a contact's use counter for compose autocomplete ranking (WM-029). */
+/**
+ * After sending, save/boost each recipient so it appears in compose autocomplete
+ * next time (WM-029). Creates a contact for new addresses, bumps useCount for known ones.
+ */
 export async function recordUse(mailboxId: string, emails: string[]) {
-  if (!emails.length) return;
-  await prisma.webmailContact.updateMany({
-    where: { mailboxId, emails: { array_contains: emails } },
-    data: { useCount: { increment: 1 } },
-  }).catch(() => {});
+  for (const raw of emails) {
+    const email = raw.trim().toLowerCase();
+    if (!email.includes("@")) continue;
+    const existing = await prisma.webmailContact
+      .findFirst({ where: { mailboxId, emails: { array_contains: email } } })
+      .catch(() => null);
+    if (existing) {
+      await prisma.webmailContact.update({ where: { id: existing.id }, data: { useCount: { increment: 1 } } }).catch(() => {});
+    } else {
+      await prisma.webmailContact
+        .create({ data: { mailboxId, name: email.split("@")[0] || email, emails: [email], useCount: 1 } })
+        .catch(() => {});
+    }
+  }
 }

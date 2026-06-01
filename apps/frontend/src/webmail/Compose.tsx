@@ -6,7 +6,8 @@ import {
   MousePointerClick, Palette, Users, Smile, Image as ImageIcon, PenLine, Clock, Trash2,
   Minus, Maximize2, ChevronDown, AlignLeft,
 } from "lucide-react";
-import { wmSend, aiDraft, wmGetFullSettings, WmError } from "./api";
+import { useQuery } from "@tanstack/react-query";
+import { wmSend, aiDraft, wmGetFullSettings, wmContacts, WmError } from "./api";
 import { useWebmail } from "./store";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -68,6 +69,19 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleAt, setScheduleAt] = useState("");
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [size, setSize] = useState({ w: 640, h: 580 });
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY, startW = size.w, startH = size.h;
+    const onMove = (ev: MouseEvent) => setSize({
+      w: Math.min(Math.max(startW + (startX - ev.clientX), 380), window.innerWidth - 24),
+      h: Math.min(Math.max(startH + (startY - ev.clientY), 340), window.innerHeight - 24),
+    });
+    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -187,12 +201,22 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
 
   return (
     <div
+      style={!maximized && !minimized ? { width: size.w, height: size.h } : undefined}
       className={cn(
         "fixed z-50 flex flex-col rounded-lg border border-border bg-surface shadow-2xl",
-        maximized ? "inset-6" : "bottom-0 right-6 w-[min(40rem,calc(100vw-2rem))]",
-        minimized && "h-12 w-80",
+        maximized ? "inset-6" : "bottom-0 right-6",
+        minimized && "!h-12 !w-80",
       )}
     >
+      {!maximized && !minimized && (
+        <div
+          onMouseDown={startResize}
+          title="Drag to resize"
+          className="absolute left-0 top-0 z-20 flex h-6 w-6 cursor-nwse-resize items-center justify-center rounded-tl-lg text-surface/70 hover:text-surface"
+        >
+          <Maximize2 className="h-3.5 w-3.5 -scale-x-100" />
+        </div>
+      )}
       <div className="flex items-center justify-between rounded-t-lg bg-text-primary px-4 py-2 text-surface">
         <span className="text-sm font-medium">{subject || "New message"}</span>
         <div className="flex items-center gap-2">
@@ -203,17 +227,17 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
       </div>
 
       {!minimized && (
-        <div className={cn("flex min-h-0 flex-1 flex-col", maximized ? "" : "max-h-[70vh]")}>
+        <div className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-1 border-b border-border px-4 py-2 text-sm">
             <div className="text-text-secondary">From: <span className="text-text-primary">{fromEmail}</span></div>
             <div className="flex items-center gap-2">
-              <Input placeholder="To" value={to} onChange={(e) => setTo(e.target.value)} className="h-8 border-0 px-0 focus-visible:ring-0" />
+              <RecipientInput placeholder="To" value={to} onChange={setTo} />
               {!showCc && <button onClick={() => setShowCc(true)} className="text-xs text-primary">Cc/Bcc</button>}
             </div>
             {showCc && (
               <>
-                <Input placeholder="Cc" value={cc} onChange={(e) => setCc(e.target.value)} className="h-8 border-0 px-0 focus-visible:ring-0" />
-                <Input placeholder="Bcc" value={bcc} onChange={(e) => setBcc(e.target.value)} className="h-8 border-0 px-0 focus-visible:ring-0" />
+                <RecipientInput placeholder="Cc" value={cc} onChange={setCc} />
+                <RecipientInput placeholder="Bcc" value={bcc} onChange={setBcc} />
               </>
             )}
             <Input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} className="h-8 border-0 px-0 font-medium focus-visible:ring-0" />
@@ -348,6 +372,61 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
             <button onClick={insertSignature} title="Insert signature" className="rounded p-2 hover:bg-elevated"><PenLine className="h-4 w-4" /></button>
             <button onClick={onClose} title="Discard" className="ml-auto rounded p-2 text-text-secondary hover:bg-elevated hover:text-danger"><Trash2 className="h-4 w-4" /></button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Recipient field with autocomplete from saved/used contacts (comma-separated). */
+function RecipientInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  const { data: contacts } = useQuery({ queryKey: ["wm", "contacts"], queryFn: wmContacts, staleTime: 60_000 });
+  const [open, setOpen] = useState(false);
+  const tokens = value.split(",");
+  const current = (tokens[tokens.length - 1] ?? "").trim().toLowerCase();
+  const chosen = new Set(tokens.slice(0, -1).map((t) => t.trim().toLowerCase()));
+  const suggestions =
+    current.length >= 1
+      ? (contacts ?? [])
+          .flatMap((c) => c.emails.map((e) => ({ name: c.name, email: e })))
+          .filter((s) => !chosen.has(s.email.toLowerCase()) && (s.email.toLowerCase().includes(current) || (s.name ?? "").toLowerCase().includes(current)))
+          .slice(0, 6)
+      : [];
+
+  function pick(email: string) {
+    const before = tokens.slice(0, -1).map((t) => t.trim()).filter(Boolean);
+    onChange([...before, email].join(", ") + ", ");
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative flex-1">
+      <Input
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="h-8 border-0 px-0 focus-visible:ring-0"
+      />
+      {open && suggestions.length > 0 && (
+        <div className="absolute left-0 top-9 z-[60] max-h-60 w-full max-w-sm overflow-auto rounded-md border border-border bg-surface py-1 shadow-lg">
+          {suggestions.map((s) => (
+            <button
+              key={s.email}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); pick(s.email); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-elevated"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+                {(s.name || s.email).charAt(0).toUpperCase()}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm">{s.name || s.email}</span>
+                {s.name && <span className="block truncate text-xs text-text-secondary">{s.email}</span>}
+              </span>
+            </button>
+          ))}
         </div>
       )}
     </div>
