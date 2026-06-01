@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Inbox as InboxIcon, Send, FileText, Trash2, Folder as FolderIcon, Paperclip, Star, Search, FolderPlus, StickyNote, Play, X, Archive, MailOpen, ShieldAlert, Ban, FolderInput, Reply, ReplyAll, Forward, Sparkles, Clock, Tag } from "lucide-react";
 import {
@@ -17,13 +17,13 @@ import {
   wmCancelScheduled,
   aiReply,
   aiSummarize,
-  attachmentUrl,
   type Folder,
   type MessageListItem,
   type MessageFull,
 } from "./api";
 import { Compose, type ComposeInitial } from "./Compose";
 import { NotesPanel } from "./NotesPanel";
+import { AttachmentViewer } from "./AttachmentViewer";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
@@ -64,6 +64,7 @@ export function Inbox() {
   const [filter, setFilter] = useState<"all" | "unread" | "starred">("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [nav, setNav] = useState<string>("INBOX");
+  const [viewer, setViewer] = useState<number | null>(null); // attachment position being previewed
 
   function selectStd(item: (typeof STANDARD)[number]) {
     setUid(null); setSummary(null); setNav(item.key); setSelected(new Set());
@@ -376,11 +377,18 @@ export function Inbox() {
             </button>
           </div>
           <article className="mx-auto max-w-3xl p-6">
-            <header className="mb-4 border-b border-border pb-4">
-              <h1 className="mb-2 text-xl font-semibold">{message.data.subject}</h1>
-              <div className="flex items-center gap-2 text-sm text-text-secondary">
-                <span className="font-medium text-text-primary">{message.data.from[0]?.name || message.data.from[0]?.address}</span>
-                <span>&lt;{message.data.from[0]?.address}&gt;</span>
+            <h1 className="mb-4 text-2xl font-semibold leading-tight">{message.data.subject || "(no subject)"}</h1>
+            <header className="mb-5 flex items-start gap-3 border-b border-border pb-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-base font-semibold text-primary">
+                {(message.data.from[0]?.name || message.data.from[0]?.address || "?").charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium text-text-primary">{message.data.from[0]?.name || message.data.from[0]?.address}</span>
+                  <span className="shrink-0 text-xs text-text-secondary">{formatRelative(message.data.date)}</span>
+                </div>
+                <div className="truncate text-xs text-text-secondary">{message.data.from[0]?.address}</div>
+                <div className="mt-0.5 truncate text-xs text-text-secondary">To: {message.data.to.map((t) => t.name || t.address).join(", ") || "me"}</div>
               </div>
             </header>
 
@@ -392,20 +400,35 @@ export function Inbox() {
             )}
 
             {message.data.attachments.length > 0 && (
-              <div className="mb-4 flex flex-wrap gap-2">
-                {message.data.attachments.map((a) => (
-                  <a key={a.index} href={attachmentUrl(folder, uid, a.index)} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs hover:bg-elevated">
-                    <Paperclip className="h-3 w-3" /> {a.filename} <span className="text-text-secondary">({formatBytes(a.size)})</span>
-                  </a>
-                ))}
+              <div className="mb-5">
+                <div className="mb-2 text-xs font-medium text-text-secondary">
+                  {message.data.attachments.length} attachment{message.data.attachments.length > 1 ? "s" : ""}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {message.data.attachments.map((a, arrIdx) => (
+                    <button
+                      key={a.index}
+                      onClick={() => setViewer(arrIdx)}
+                      title="Click to preview"
+                      className="group flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors hover:border-primary hover:bg-elevated"
+                    >
+                      <Paperclip className="h-4 w-4 shrink-0 text-text-secondary group-hover:text-primary" />
+                      <div className="min-w-0">
+                        <div className="max-w-[14rem] truncate text-xs font-medium">{a.filename}</div>
+                        <div className="text-[11px] text-text-secondary">{formatBytes(a.size)}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Sandboxed iframe blocks scripts; image-load is up to the browser. */}
             {message.data.html ? (
-              <iframe title="message" sandbox="" className="h-[60vh] w-full rounded-md border border-border bg-white" srcDoc={message.data.html} />
+              <MailBody html={message.data.html} />
             ) : (
-              <pre className="whitespace-pre-wrap font-sans text-sm">{message.data.text}</pre>
+              <div className="rounded-md border border-border bg-white p-4">
+                <pre className="whitespace-pre-wrap font-sans text-sm text-black">{message.data.text}</pre>
+              </div>
             )}
 
             {/* Quick replies */}
@@ -426,8 +449,48 @@ export function Inbox() {
        )}
       </div>
 
+      {viewer !== null && uid !== null && message.data && (
+        <AttachmentViewer
+          folder={folder}
+          uid={uid}
+          attachments={message.data.attachments}
+          startIndex={viewer}
+          onClose={() => setViewer(null)}
+        />
+      )}
+
       <Compose open={compose.open} initial={compose.initial} onClose={() => { setCompose({ open: false }); refreshList(); qc.invalidateQueries({ queryKey: ["wm", "scheduled"] }); }} />
     </div>
+  );
+}
+
+/** Renders email HTML in a sandboxed (no-script) iframe that auto-sizes to its content,
+ *  so the message reads like a real email instead of a fixed "box". */
+function MailBody({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(360);
+  const doc = `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html,body{margin:0;padding:14px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:14px;line-height:1.55;color:#111;word-break:break-word}
+img{max-width:100%;height:auto}a{color:#2563eb}table{max-width:100%}blockquote{border-left:3px solid #ddd;margin:0;padding-left:12px;color:#555}</style></head>
+<body>${html}</body></html>`;
+  function resize() {
+    try {
+      const b = ref.current?.contentDocument?.body;
+      if (b) setHeight(Math.min(Math.max(b.scrollHeight + 28, 160), 6000));
+    } catch { /* cross-origin guard */ }
+  }
+  return (
+    <iframe
+      ref={ref}
+      title="message"
+      // allow-same-origin (NOT allow-scripts) → email scripts never run, but the
+      // parent can measure the content to auto-size the frame.
+      sandbox="allow-same-origin"
+      srcDoc={doc}
+      onLoad={() => { resize(); setTimeout(resize, 300); }}
+      style={{ height }}
+      className="w-full rounded-md border border-border bg-white"
+    />
   );
 }
 

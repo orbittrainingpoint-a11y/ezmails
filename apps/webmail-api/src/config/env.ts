@@ -39,6 +39,14 @@ const schema = z.object({
   // AI Smart Write (Google Gemini — free tier). Disabled gracefully if unset.
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+
+  // AI provider: "gemini" (Google) or "openai" (ANY OpenAI-compatible API). Use the
+  // free Groq tier — https://console.groq.com (fast Llama models, no credit card):
+  //   AI_PROVIDER=openai  AI_API_KEY=gsk_...  AI_BASE_URL=https://api.groq.com/openai/v1  AI_MODEL=llama-3.3-70b-versatile
+  AI_PROVIDER: z.enum(["gemini", "openai"]).default("gemini"),
+  AI_API_KEY: z.string().optional(),
+  AI_BASE_URL: z.string().default("https://api.groq.com/openai/v1"),
+  AI_MODEL: z.string().default("llama-3.3-70b-versatile"),
   // Public base URL for campaign open-tracking pixels + booking links.
   PUBLIC_BASE_URL: z.string().default("http://localhost:5173"),
   ALERT_FROM: z.string().default("no-reply@localhost"),
