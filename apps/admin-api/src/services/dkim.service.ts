@@ -14,8 +14,9 @@ import { generateDkimKey, makeSelector } from "../lib/dkim.js";
 async function syncKeyToDisk(domainName: string, selector: string, privateKeyPem: string) {
   try {
     await mkdir(env.DKIM_KEY_PATH, { recursive: true });
+    // 0o644 so the rspamd container (different user) can read the key and sign.
     await writeFile(join(env.DKIM_KEY_PATH, `${domainName}.${selector}.key`), privateKeyPem, {
-      mode: 0o640,
+      mode: 0o644,
     });
     await upsertSelectorMap(domainName, selector);
   } catch {
@@ -34,7 +35,7 @@ async function upsertSelectorMap(domainName: string, selector: string) {
   }
   const filtered = lines.filter((l) => l.split(/\s+/)[0] !== domainName);
   filtered.push(`${domainName} ${selector}`);
-  await writeFile(mapPath, filtered.join("\n") + "\n", { mode: 0o640 });
+  await writeFile(mapPath, filtered.join("\n") + "\n", { mode: 0o644 });
 }
 
 /** Create the initial DKIM key for a domain (called during domain creation). */
