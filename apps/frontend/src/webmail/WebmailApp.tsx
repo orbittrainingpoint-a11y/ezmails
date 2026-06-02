@@ -43,7 +43,7 @@ export function WebmailApp() {
     cn("flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium", isActive ? "bg-primary/15 text-primary" : "text-text-secondary hover:bg-elevated");
 
   return (
-    <div className="flex h-screen flex-col bg-base">
+    <div className="flex h-screen flex-col overflow-x-hidden bg-base">
       <header className="flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border bg-surface px-2 sm:px-4">
         <div className="flex items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2">
@@ -60,11 +60,12 @@ export function WebmailApp() {
             <NavLink to="/webmail/settings" className={navCls} title="Settings"><SettingsIcon className="h-4 w-4" /> <span className="hidden md:inline">Settings</span></NavLink>
           </nav>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="hidden text-sm text-text-secondary sm:block">{profile.email}</span>
+        <div className="flex items-center gap-0.5 sm:gap-1">
+          <span className="hidden text-sm text-text-secondary lg:block">{profile.email}</span>
           <Button variant="ghost" size="icon" onClick={() => navigate("/webmail/campaigns")} aria-label="Campaigns" title="Email Campaigns"><Megaphone className="h-5 w-5" /></Button>
-          <Button variant={showPanel ? "primary" : "ghost"} size="icon" onClick={() => setShowPanel((v) => !v)} aria-label="Calendar & Tasks"><PanelRightOpen className="h-5 w-5" /></Button>
-          <Button variant="ghost" size="icon" aria-label="Help" title="Help"><HelpCircle className="h-5 w-5" /></Button>
+          {/* Side panel is desktop-only; phones use the Calendar/Planner nav routes. */}
+          <Button variant={showPanel ? "primary" : "ghost"} size="icon" onClick={() => setShowPanel((v) => !v)} aria-label="Calendar & Tasks" className="hidden lg:inline-flex"><PanelRightOpen className="h-5 w-5" /></Button>
+          <Button variant="ghost" size="icon" aria-label="Help" title="Help" className="hidden sm:inline-flex"><HelpCircle className="h-5 w-5" /></Button>
           <ThemeToggle />
           <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Sign out"><LogOut className="h-5 w-5" /></Button>
         </div>

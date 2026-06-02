@@ -372,7 +372,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
             </div>
           )}
 
-          <div className="flex items-center gap-1 border-t border-border px-3 py-2">
+          <div className="flex flex-wrap items-center gap-1 border-t border-border px-3 py-2">
             <div className="flex">
               <Button onClick={() => handleSend()} loading={sending} className="rounded-r-none"><Send className="h-4 w-4" /> Send</Button>
               <DropdownMenu.Root>

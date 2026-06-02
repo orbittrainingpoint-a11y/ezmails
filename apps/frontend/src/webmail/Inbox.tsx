@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Inbox as InboxIcon, Send, FileText, Trash2, Folder as FolderIcon, Paperclip, Star, Search, FolderPlus, StickyNote, Play, X, Archive, MailOpen, ShieldAlert, Ban, FolderInput, Reply, ReplyAll, Forward, Sparkles, Clock, Tag, Menu, ArrowLeft } from "lucide-react";
+import { Inbox as InboxIcon, Send, FileText, Trash2, Folder as FolderIcon, Paperclip, Star, Search, FolderPlus, StickyNote, Play, X, Archive, MailOpen, ShieldAlert, Ban, FolderInput, Reply, ReplyAll, Forward, Sparkles, Clock, Tag, Menu, ArrowLeft, SquarePen } from "lucide-react";
 import {
   wmFolders,
   wmFolderCounts,
@@ -249,6 +249,16 @@ export function Inbox() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
+      {/* Mobile compose button — the "New email" button lives in the folders drawer, so phones need a always-visible shortcut. */}
+      {uid === null && !compose.open && (
+        <button
+          onClick={() => setCompose({ open: true })}
+          className="fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg transition-transform active:scale-95 lg:hidden"
+          aria-label="New email"
+        >
+          <SquarePen className="h-6 w-6" />
+        </button>
+      )}
       {/* Folders — static on desktop, slide-in drawer on mobile */}
       {foldersOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setFoldersOpen(false)} />}
       <aside

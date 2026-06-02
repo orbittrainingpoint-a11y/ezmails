@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download,
+  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft,
 } from "lucide-react";
 import {
   wmAccount, wmUpdateName, wmChangePassword,
@@ -52,9 +52,16 @@ const GROUPS: { label: string; items: { id: SectionId; label: string; icon: type
 
 export function Settings() {
   const [active, setActive] = useState<SectionId>("account");
+  // On phones the rail and the section content swap (single-pane flow); on lg+ they sit side by side.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const openSection = (id: SectionId) => { setActive(id); setMobileOpen(true); };
+  const activeLabel = GROUPS.flatMap((g) => g.items).find((i) => i.id === active)?.label ?? "Settings";
   return (
     <div className="flex h-full">
-      <aside className="w-60 shrink-0 overflow-auto border-r border-border bg-surface p-3">
+      <aside className={cn(
+        "w-full shrink-0 overflow-auto border-r border-border bg-surface p-3 lg:w-60",
+        mobileOpen ? "hidden lg:block" : "block",
+      )}>
         <h2 className="px-2 pb-2 text-lg font-semibold">Settings</h2>
         {GROUPS.map((g) => (
           <div key={g.label} className="mb-4">
@@ -62,7 +69,7 @@ export function Settings() {
             {g.items.map((it) => (
               <button
                 key={it.id}
-                onClick={() => setActive(it.id)}
+                onClick={() => openSection(it.id)}
                 className={cn(
                   "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm",
                   active === it.id ? "bg-primary/15 text-primary" : "text-text-secondary hover:bg-elevated",
@@ -75,7 +82,13 @@ export function Settings() {
         ))}
       </aside>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className={cn("min-w-0 flex-1 overflow-auto p-4 sm:p-6", mobileOpen ? "block" : "hidden lg:block")}>
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="mb-3 flex items-center gap-1 text-sm font-medium text-primary lg:hidden"
+        >
+          <ArrowLeft className="h-4 w-4" /> {activeLabel}
+        </button>
         <div className="mx-auto max-w-3xl">
           {active === "account" && <AccountSection />}
           {active === "notifications" && <NotificationsSection />}
