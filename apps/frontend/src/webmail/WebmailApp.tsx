@@ -44,20 +44,20 @@ export function WebmailApp() {
 
   return (
     <div className="flex h-screen flex-col bg-base">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4">
-        <div className="flex items-center gap-4">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border bg-surface px-2 sm:px-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary">
               <Mail className="h-4 w-4 text-white" />
             </div>
-            <span className="font-semibold">ezmails</span>
+            <span className="hidden font-semibold sm:inline">ezmails</span>
           </div>
-          <nav className="flex items-center gap-1">
-            <NavLink to="/webmail" end className={navCls}><InboxIcon className="h-4 w-4" /> Mail</NavLink>
-            <NavLink to="/webmail/calendar" className={navCls}><CalendarDays className="h-4 w-4" /> Calendar</NavLink>
-            <NavLink to="/webmail/planner" className={navCls}><LayoutGrid className="h-4 w-4" /> Planner</NavLink>
-            <NavLink to="/webmail/contacts" className={navCls}><Users className="h-4 w-4" /> Contacts</NavLink>
-            <NavLink to="/webmail/settings" className={navCls}><SettingsIcon className="h-4 w-4" /> Settings</NavLink>
+          <nav className="flex items-center gap-0.5 sm:gap-1">
+            <NavLink to="/webmail" end className={navCls} title="Mail"><InboxIcon className="h-4 w-4" /> <span className="hidden md:inline">Mail</span></NavLink>
+            <NavLink to="/webmail/calendar" className={navCls} title="Calendar"><CalendarDays className="h-4 w-4" /> <span className="hidden md:inline">Calendar</span></NavLink>
+            <NavLink to="/webmail/planner" className={navCls} title="Planner"><LayoutGrid className="h-4 w-4" /> <span className="hidden md:inline">Planner</span></NavLink>
+            <NavLink to="/webmail/contacts" className={navCls} title="Contacts"><Users className="h-4 w-4" /> <span className="hidden md:inline">Contacts</span></NavLink>
+            <NavLink to="/webmail/settings" className={navCls} title="Settings"><SettingsIcon className="h-4 w-4" /> <span className="hidden md:inline">Settings</span></NavLink>
           </nav>
         </div>
         <div className="flex items-center gap-1">

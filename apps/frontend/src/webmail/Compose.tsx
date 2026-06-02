@@ -229,18 +229,20 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
 
   return (
     <div
-      style={!maximized && !minimized ? { width: size.w, height: size.h } : undefined}
+      style={!maximized && !minimized ? { width: `min(${size.w}px, 100vw)`, height: `min(${size.h}px, calc(100dvh - 0.5rem))` } : undefined}
       className={cn(
         "fixed z-50 flex flex-col rounded-lg border border-border bg-surface shadow-2xl",
-        maximized ? "inset-6" : "bottom-0 right-6",
+        // Full-width docked at the bottom on phones; floating bottom-right on sm+.
+        maximized ? "inset-2 sm:inset-6" : "bottom-0 right-0 sm:right-6",
         minimized && "!h-12 !w-80",
       )}
     >
+      {/* Resize handle — desktop only (touch devices use full size / maximize). */}
       {!maximized && !minimized && (
         <div
           onMouseDown={startResize}
           title="Drag to resize"
-          className="absolute left-0 top-0 z-20 flex h-6 w-6 cursor-nwse-resize items-center justify-center rounded-tl-lg text-surface/70 hover:text-surface"
+          className="absolute left-0 top-0 z-20 hidden h-6 w-6 cursor-nwse-resize items-center justify-center rounded-tl-lg text-surface/70 hover:text-surface sm:flex"
         >
           <Maximize2 className="h-3.5 w-3.5 -scale-x-100" />
         </div>

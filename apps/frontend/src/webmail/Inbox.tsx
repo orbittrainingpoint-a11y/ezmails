@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Inbox as InboxIcon, Send, FileText, Trash2, Folder as FolderIcon, Paperclip, Star, Search, FolderPlus, StickyNote, Play, X, Archive, MailOpen, ShieldAlert, Ban, FolderInput, Reply, ReplyAll, Forward, Sparkles, Clock, Tag } from "lucide-react";
+import { Inbox as InboxIcon, Send, FileText, Trash2, Folder as FolderIcon, Paperclip, Star, Search, FolderPlus, StickyNote, Play, X, Archive, MailOpen, ShieldAlert, Ban, FolderInput, Reply, ReplyAll, Forward, Sparkles, Clock, Tag, Menu, ArrowLeft } from "lucide-react";
 import {
   wmFolders,
   wmFolderCounts,
@@ -66,10 +66,11 @@ export function Inbox() {
   const [nav, setNav] = useState<string>("INBOX");
   const [viewer, setViewer] = useState<number | null>(null); // attachment position being previewed
   const [showHelp, setShowHelp] = useState(false);
+  const [foldersOpen, setFoldersOpen] = useState(false); // mobile folders drawer
   const searchRef = useRef<HTMLInputElement>(null);
 
   function selectStd(item: (typeof STANDARD)[number]) {
-    setUid(null); setSummary(null); setNav(item.key); setSelected(new Set());
+    setUid(null); setSummary(null); setNav(item.key); setSelected(new Set()); setFoldersOpen(false);
     if (item.kind === "starred") { setFolder("INBOX"); setFilter("starred"); }
     else if (item.kind === "scheduled") { setFilter("all"); }
     else { setFolder(item.path); setFilter("all"); }
@@ -248,9 +249,16 @@ export function Inbox() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
-      {/* Folders */}
-      <aside className="flex w-48 shrink-0 flex-col border-r border-border p-3">
-        <Button className="mb-2 w-full" onClick={() => setCompose({ open: true })}>New email</Button>
+      {/* Folders — static on desktop, slide-in drawer on mobile */}
+      {foldersOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setFoldersOpen(false)} />}
+      <aside
+        className={cn(
+          "flex w-60 shrink-0 flex-col border-r border-border bg-surface p-3",
+          "fixed inset-y-0 left-0 z-40 transition-transform lg:static lg:z-auto lg:w-48",
+          foldersOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        )}
+      >
+        <Button className="mb-2 w-full" onClick={() => { setCompose({ open: true }); setFoldersOpen(false); }}>New email</Button>
         <div className="mb-2 flex gap-1">
           <Button variant="outline" size="sm" className="flex-1" onClick={newFolder}><FolderPlus className="h-4 w-4" /> Folder</Button>
           <Button variant="outline" size="sm" onClick={runRules} title="Run inbox rules"><Play className="h-4 w-4" /></Button>
@@ -288,7 +296,7 @@ export function Inbox() {
                 nav === f.path ? "bg-primary/15 text-primary" : "text-text-secondary hover:bg-elevated",
               )}
             >
-              <button onClick={() => { setFolder(f.path); setNav(f.path); setFilter("all"); setUid(null); }} className="flex min-w-0 flex-1 items-center gap-2">
+              <button onClick={() => { setFolder(f.path); setNav(f.path); setFilter("all"); setUid(null); setFoldersOpen(false); }} className="flex min-w-0 flex-1 items-center gap-2">
                 <FolderIcon className="h-4 w-4 shrink-0" /> <span className="truncate">{f.name}</span>
                 {(counts.data?.[f.path]?.unread ?? 0) > 0 && (
                   <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">{counts.data![f.path]!.unread}</span>
@@ -302,12 +310,15 @@ export function Inbox() {
         </nav>
       </aside>
 
-      {/* Message list */}
-      <div className="flex w-96 shrink-0 flex-col border-r border-border">
+      {/* Message list — full width on mobile, fixed column on desktop; hidden on mobile while reading */}
+      <div className={cn("w-full shrink-0 flex-col border-r border-border lg:flex lg:w-96", uid !== null ? "hidden lg:flex" : "flex")}>
         <div className="space-y-2 border-b border-border p-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-            <Input ref={searchRef} placeholder="Search mail…  ( / )" className="h-9 pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div className="flex items-center gap-2">
+            <button onClick={() => setFoldersOpen(true)} className="rounded-md p-1.5 hover:bg-elevated lg:hidden" aria-label="Folders"><Menu className="h-5 w-5" /></button>
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+              <Input ref={searchRef} placeholder="Search mail…" className="h-9 pl-8" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
           </div>
           <div className="flex items-center justify-between px-1">
             <span className="text-sm font-semibold">{STANDARD.find((s) => s.key === nav)?.label ?? folders.data?.find((f) => f.path === folder)?.name ?? folder}</span>
@@ -385,8 +396,8 @@ export function Inbox() {
         </div>
       </div>
 
-      {/* Reading pane + notes */}
-      <div className="flex min-w-0 flex-1">
+      {/* Reading pane + notes — hidden on mobile until a message is opened */}
+      <div className={cn("min-w-0 flex-1", uid === null ? "hidden lg:flex" : "flex")}>
        <div className="min-w-0 flex-1 overflow-auto">
         {!uid ? (
           <div className="flex h-full items-center justify-center text-sm text-text-secondary">Select a message to read</div>
@@ -396,6 +407,7 @@ export function Inbox() {
           <>
           {/* Titan-style action toolbar */}
           <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 border-b border-border bg-surface px-4 py-2">
+            <button onClick={() => setUid(null)} className="mr-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-secondary hover:bg-elevated lg:hidden" aria-label="Back"><ArrowLeft className="h-4 w-4" /> Back</button>
             <ToolbarBtn icon={Archive} label="Archive" onClick={() => moveTo(folderByUse("\\Archive", "Archive"))} />
             <ToolbarBtn icon={Trash2} label="Delete" onClick={() => onTrash(message.data!)} danger />
             <ToolbarBtn icon={message.data.flagged ? Star : Star} label="Star" onClick={() => wmFlag(folder, uid, { flagged: !message.data!.flagged }).then(refreshList)} active={message.data.flagged} />
