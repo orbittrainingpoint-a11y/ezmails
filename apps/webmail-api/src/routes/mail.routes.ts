@@ -14,6 +14,7 @@ import {
   moveMessage,
   trashMessage,
   send,
+  saveDraft,
 } from "../services/mail.service.js";
 import { recordUse } from "../services/contact.service.js";
 import { schedule, listScheduled, cancel, flushDue } from "../services/scheduled.service.js";
@@ -80,12 +81,17 @@ export default async function mailRoutes(app: FastifyInstance) {
 
   app.get("/messages/:uid/attachments/:index", async (req, reply) => {
     const { uid, index } = req.params as { uid: string; index: string };
-    const { folder } = z.object({ folder: z.string().default("INBOX") }).parse(req.query);
+    const { folder, download } = z
+      .object({ folder: z.string().default("INBOX"), download: z.coerce.boolean().default(false) })
+      .parse(req.query);
     const att = await getAttachment(req.creds!, folder, Number(uid), Number(index));
     if (!att) throw Errors.notFound("Attachment not found.");
+    // Inline by default so PDFs/images render in the previewer; ?download=1 forces a download.
+    const disp = download ? "attachment" : "inline";
     return reply
       .header("content-type", att.contentType || "application/octet-stream")
-      .header("content-disposition", `attachment; filename="${att.filename}"`)
+      .header("content-disposition", `${disp}; filename="${att.filename.replace(/"/g, "")}"`)
+      .header("x-content-type-options", "nosniff")
       .send(att.content);
   });
 
@@ -108,6 +114,23 @@ export default async function mailRoutes(app: FastifyInstance) {
     const result = await send(req.creds!, { ...body, attachments });
     await recordUse(req.creds!.mailboxId, body.to);
     return reply.send({ success: true, data: result });
+  });
+
+  app.post("/messages/draft", async (req, reply) => {
+    // Lenient: a draft may have no/partial recipients and no subject.
+    const body = z
+      .object({
+        to: z.array(z.string()).optional(),
+        cc: z.array(z.string()).optional(),
+        bcc: z.array(z.string()).optional(),
+        subject: z.string().optional(),
+        html: z.string().optional(),
+        text: z.string().optional(),
+        attachments: z.array(z.object({ filename: z.string(), contentBase64: z.string(), contentType: z.string().optional() })).optional(),
+      })
+      .parse(req.body);
+    const attachments = body.attachments?.map((a) => ({ filename: a.filename, content: Buffer.from(a.contentBase64, "base64"), contentType: a.contentType }));
+    return reply.send({ success: true, data: await saveDraft(req.creds!, { ...body, attachments }) });
   });
 
   app.patch("/messages/:uid", async (req, reply) => {

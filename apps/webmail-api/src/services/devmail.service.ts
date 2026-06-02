@@ -199,3 +199,21 @@ export async function send(
   }
   return { messageId };
 }
+
+export async function saveDraft(
+  creds: WebmailCreds,
+  message: { to?: string[]; cc?: string[]; bcc?: string[]; subject?: string; html?: string; text?: string; attachments?: OutgoingAttachment[] },
+) {
+  const messageId = `<${randomToken(12)}@ezmails.local>`;
+  const stored: StoredAtt[] = (message.attachments ?? []).map((a) => ({ filename: a.filename, contentType: a.contentType ?? "application/octet-stream", contentBase64: a.content.toString("base64") }));
+  const sender = await prisma.mailbox.findUnique({ where: { id: creds.mailboxId } });
+  await prisma.devMail.create({
+    data: {
+      mailboxId: creds.mailboxId, folder: "Drafts", uid: await nextUid(creds.mailboxId), messageId,
+      fromName: sender?.displayName ?? null, fromAddr: creds.email,
+      toJson: j((message.to ?? []).map((a) => ({ address: a }))), ccJson: j((message.cc ?? []).map((a) => ({ address: a }))),
+      subject: message.subject ?? "", html: message.html ?? null, text: message.text ?? null, seen: true, attachments: j(stored),
+    },
+  });
+  return { ok: true };
+}

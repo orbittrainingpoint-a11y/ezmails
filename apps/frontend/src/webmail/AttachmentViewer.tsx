@@ -55,6 +55,7 @@ export function AttachmentViewer({
 
   if (!att) return null;
   const url = attachmentUrl(folder, uid, att.index);
+  const dlUrl = `${url}&download=1`;
   const kind = kindOf(att);
 
   return (
@@ -69,7 +70,7 @@ export function AttachmentViewer({
         {attachments.length > 1 && (
           <span className="text-xs text-white/70">{pos + 1} / {attachments.length}</span>
         )}
-        <a href={url} download={att.filename} className="flex items-center gap-1 rounded-md bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20">
+        <a href={dlUrl} download={att.filename} className="flex items-center gap-1 rounded-md bg-white/10 px-3 py-1.5 text-sm hover:bg-white/20">
           <Download className="h-4 w-4" /> Download
         </a>
         <button onClick={onClose} className="rounded-md p-1.5 hover:bg-white/10" aria-label="Close"><X className="h-5 w-5" /></button>
@@ -98,7 +99,7 @@ export function AttachmentViewer({
             <FileText className="mx-auto mb-3 h-10 w-10 text-text-secondary" />
             <p className="mb-1 text-sm font-medium">No in-app preview for this file type</p>
             <p className="mb-4 text-xs text-text-secondary">{att.filename}</p>
-            <a href={url} download={att.filename} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover">
+            <a href={dlUrl} download={att.filename} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover">
               <Download className="h-4 w-4" /> Download to open
             </a>
           </div>
@@ -173,7 +174,7 @@ function Failed({ url, filename }: { url: string; filename: string }) {
     <div className="rounded-lg bg-surface p-8 text-center">
       <FileText className="mx-auto mb-3 h-10 w-10 text-text-secondary" />
       <p className="mb-4 text-sm">Couldn’t render a preview. You can download it instead.</p>
-      <a href={url} download={filename} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover">
+      <a href={`${url}&download=1`} download={filename} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover">
         <Download className="h-4 w-4" /> Download
       </a>
     </div>

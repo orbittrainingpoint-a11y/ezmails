@@ -1,7 +1,7 @@
 import { simpleParser } from "mailparser";
 import type { ImapFlow } from "imapflow";
 import { withImap } from "../lib/imap.js";
-import { sendMail, type OutgoingAttachment } from "../lib/smtp.js";
+import { sendMail, buildRawMessage, type OutgoingAttachment } from "../lib/smtp.js";
 import type { WebmailCreds } from "../lib/session.js";
 import { env } from "../config/env.js";
 import * as dev from "./devmail.service.js";
@@ -267,4 +267,28 @@ export async function send(
     await c.append(sent, result.raw, ["\\Seen"]).catch(() => {});
   }).catch(() => {});
   return { messageId: result.messageId };
+}
+
+/** Save an unsent message to the Drafts folder. */
+export async function saveDraft(
+  creds: WebmailCreds,
+  message: { to?: string[]; cc?: string[]; bcc?: string[]; subject?: string; html?: string; text?: string; attachments?: OutgoingAttachment[] },
+) {
+  if (DEV) return dev.saveDraft(creds, message);
+  const { raw } = await buildRawMessage({
+    from: creds.email,
+    to: message.to ?? [],
+    cc: message.cc,
+    bcc: message.bcc,
+    subject: message.subject ?? "",
+    html: message.html,
+    text: message.text,
+    attachments: message.attachments,
+  });
+  await withImap(creds, async (c) => {
+    const drafts = await findSpecial(c, "\\Drafts", "Drafts");
+    await c.mailboxCreate(drafts).catch(() => {});
+    await c.append(drafts, raw, ["\\Draft"]).catch(() => {});
+  });
+  return { ok: true };
 }

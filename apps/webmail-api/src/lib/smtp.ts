@@ -7,25 +7,20 @@ export interface OutgoingAttachment {
   contentType?: string;
 }
 
-/**
- * Send mail through Postfix submission. Builds the full MIME (with attachments)
- * ONCE via nodemailer's stream transport, sends that exact raw, and returns it so
- * the caller can append an identical copy to the Sent folder.
- */
-export async function sendMail(
-  creds: { email: string; password: string },
-  message: {
-    from: string;
-    to: string[];
-    cc?: string[];
-    bcc?: string[];
-    subject: string;
-    html?: string;
-    text?: string;
-    attachments?: OutgoingAttachment[];
-  },
-): Promise<{ messageId: string; raw: Buffer }> {
-  // Always include a plain-text alternative (HTML-only mail scores worse with spam filters).
+interface Message {
+  from: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  attachments?: OutgoingAttachment[];
+}
+
+/** Build the full MIME (with attachments + a plain-text alternative) without sending. */
+export async function buildRawMessage(message: Message): Promise<{ raw: Buffer; messageId: string }> {
+  // HTML-only mail scores worse with spam filters — derive a text/plain part.
   const text =
     message.text ??
     (message.html
@@ -39,7 +34,8 @@ export async function sendMail(
           .trim()
       : undefined);
 
-  const mailOptions = {
+  const builder = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "windows" });
+  const built = await builder.sendMail({
     from: message.from,
     to: message.to,
     cc: message.cc,
@@ -48,14 +44,16 @@ export async function sendMail(
     html: message.html,
     text,
     attachments: message.attachments,
-  };
+  });
+  return { raw: built.message as Buffer, messageId: built.messageId };
+}
 
-  // Build the raw message (with attachments) without sending.
-  const builder = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "windows" });
-  const built = await builder.sendMail(mailOptions);
-  const raw = built.message as Buffer;
-
-  // Send the exact raw over the authenticated submission transport.
+/**
+ * Send mail through Postfix submission. Builds the MIME once, sends that exact raw,
+ * and returns it so the caller can append an identical copy to the Sent folder.
+ */
+export async function sendMail(creds: { email: string; password: string }, message: Message): Promise<{ messageId: string; raw: Buffer }> {
+  const { raw, messageId } = await buildRawMessage(message);
   const transport = nodemailer.createTransport({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
@@ -63,7 +61,8 @@ export async function sendMail(
     auth: { user: creds.email, pass: creds.password },
     tls: { rejectUnauthorized: env.MAIL_TLS_REJECT_UNAUTHORIZED },
   });
-  await transport.sendMail({ envelope: built.envelope, raw });
-
-  return { messageId: built.messageId, raw };
+  // Envelope delivers to all recipients (incl. bcc); the raw has no Bcc header.
+  const to = [...message.to, ...(message.cc ?? []), ...(message.bcc ?? [])];
+  await transport.sendMail({ envelope: { from: message.from, to }, raw });
+  return { messageId, raw };
 }

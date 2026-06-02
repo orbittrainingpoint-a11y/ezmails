@@ -7,7 +7,7 @@ import {
   Minus, Maximize2, ChevronDown, AlignLeft,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { wmSend, aiDraft, wmGetFullSettings, wmContacts, WmError } from "./api";
+import { wmSend, wmSaveDraft, aiDraft, wmGetFullSettings, wmContacts, WmError } from "./api";
 import { useWebmail } from "./store";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -69,6 +69,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleAt, setScheduleAt] = useState("");
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [closePrompt, setClosePrompt] = useState(false);
   const [size, setSize] = useState({ w: 640, h: 580 });
 
   function startResize(e: React.MouseEvent) {
@@ -193,6 +194,33 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     handleSend(scheduleAt);
   }
 
+  // Closing a non-empty composer asks whether to keep it as a draft.
+  function isDirty() {
+    const body = (editorRef.current?.innerHTML ?? "").replace(/<br\s*\/?>/gi, "").replace(/<[^>]+>/g, "").trim();
+    return !!(to.trim() || cc.trim() || bcc.trim() || subject.trim() || body || attachments.length);
+  }
+  function requestClose() {
+    if (isDirty()) setClosePrompt(true);
+    else onClose();
+  }
+  async function saveAsDraft() {
+    setClosePrompt(false);
+    try {
+      await wmSaveDraft({
+        to: to.split(",").map((s) => s.trim()).filter(Boolean),
+        cc: cc.split(",").map((s) => s.trim()).filter(Boolean),
+        bcc: bcc.split(",").map((s) => s.trim()).filter(Boolean),
+        subject,
+        html: editorRef.current?.innerHTML ?? "",
+        attachments,
+      });
+      toast.success("Saved to Drafts.");
+    } catch (e) {
+      toast.error(e instanceof WmError ? e.message : "Could not save draft.");
+    }
+    onClose();
+  }
+
   const ToolBtn = ({ icon: Icon, label, onClick, active }: { icon: typeof Bold; label: string; onClick: () => void; active?: boolean }) => (
     <button type="button" onClick={onClick} title={label} className={cn("flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-elevated", active ? "text-primary" : "text-text-secondary")}>
       <Icon className="h-4 w-4" /> <span className="hidden xl:inline">{label}</span>
@@ -222,7 +250,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
         <div className="flex items-center gap-2">
           <button onClick={() => setMinimized((v) => !v)} aria-label="Minimize"><Minus className="h-4 w-4" /></button>
           <button onClick={() => setMaximized((v) => !v)} aria-label="Maximize"><Maximize2 className="h-4 w-4" /></button>
-          <button onClick={onClose} aria-label="Close"><X className="h-4 w-4" /></button>
+          <button onClick={requestClose} aria-label="Close"><X className="h-4 w-4" /></button>
         </div>
       </div>
 
@@ -371,6 +399,19 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
             </DropdownMenu.Root>
             <button onClick={insertSignature} title="Insert signature" className="rounded p-2 hover:bg-elevated"><PenLine className="h-4 w-4" /></button>
             <button onClick={onClose} title="Discard" className="ml-auto rounded p-2 text-text-secondary hover:bg-elevated hover:text-danger"><Trash2 className="h-4 w-4" /></button>
+          </div>
+        </div>
+      )}
+
+      {closePrompt && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center rounded-lg bg-black/50 p-4" onClick={() => setClosePrompt(false)}>
+          <div className="w-full max-w-xs rounded-lg border border-border bg-surface p-4 text-center shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <p className="mb-4 text-sm">Save this message to Drafts?</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button size="sm" onClick={saveAsDraft}>Save draft</Button>
+              <Button size="sm" variant="ghost" className="text-danger" onClick={onClose}>Discard</Button>
+              <Button size="sm" variant="ghost" onClick={() => setClosePrompt(false)}>Cancel</Button>
+            </div>
           </div>
         </div>
       )}

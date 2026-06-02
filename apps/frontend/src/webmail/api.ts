@@ -136,6 +136,7 @@ export const wmMessages = (folder: string, page: number, search?: string) => {
 };
 export const wmMessage = (folder: string, uid: number) => wm<MessageFull>(`/messages/${uid}?folder=${encodeURIComponent(folder)}`);
 export const wmSend = (body: unknown) => wm<{ messageId?: string; scheduled?: boolean; id?: string; scheduledAt?: string }>("/messages", { method: "POST", body });
+export const wmSaveDraft = (body: unknown) => wm<{ ok: boolean }>("/messages/draft", { method: "POST", body });
 
 export interface ScheduledMail {
   id: string;
