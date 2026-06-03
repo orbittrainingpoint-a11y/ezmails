@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft,
+  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft, KeyRound, Copy, Check,
 } from "lucide-react";
 import {
   wmAccount, wmUpdateName, wmChangePassword,
   wmForwarding, wmAddForwarding, wmDeleteForwarding,
   wmBlockedSenders, wmBlockSender, wmUnblockSender,
   wmImportContacts, wmImportImap, wmGetFullSettings, wmSaveSettings, aiStatus, wmLogout, WmError,
+  wmAppPasswords, wmCreateAppPassword, wmRevokeAppPassword, type AppPassword,
 } from "./api";
 import { useWebmail } from "./store";
 import { TwoFactor } from "./TwoFactor";
@@ -25,7 +26,7 @@ import { formatBytes, formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 type SectionId =
-  | "account" | "notifications" | "security" | "ai"
+  | "account" | "notifications" | "security" | "apppasswords" | "ai"
   | "rules" | "blocked"
   | "signature" | "vacation" | "forwarding" | "import" | "importmail"
   | "branding";
@@ -35,6 +36,7 @@ const GROUPS: { label: string; items: { id: SectionId; label: string; icon: type
     { id: "account", label: "Account", icon: User },
     { id: "notifications", label: "Notifications", icon: Bell },
     { id: "security", label: "Security (2FA)", icon: ShieldCheck },
+    { id: "apppasswords", label: "App Passwords", icon: KeyRound },
     { id: "ai", label: "AI Assistant", icon: Sparkles },
   ] },
   { label: "Inbox & Organization", items: [
@@ -94,6 +96,7 @@ export function Settings() {
           {active === "account" && <AccountSection />}
           {active === "notifications" && <NotificationsSection />}
           {active === "security" && <TwoFactor />}
+          {active === "apppasswords" && <AppPasswordsSection />}
           {active === "ai" && <AISection />}
           {active === "rules" && <div className="-m-6"><Rules /></div>}
           {active === "blocked" && <BlockedSection />}
@@ -386,6 +389,117 @@ function ImportMailSection() {
         )}
         <p className="text-[11px] text-text-secondary">Your source password is used only to connect and is not stored. For very large mailboxes, large folders are copied in batches — re-run to continue.</p>
       </CardContent></Card>
+    </div>
+  );
+}
+
+function AppPasswordsSection() {
+  const qc = useQueryClient();
+  const { profile } = useWebmail();
+  const { data: list, isLoading } = useQuery({ queryKey: ["wm", "app-passwords"], queryFn: wmAppPasswords });
+  const [label, setLabel] = useState("");
+  const [created, setCreated] = useState<{ label: string; password: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const host = typeof window !== "undefined" ? window.location.hostname : "your-mail-domain";
+  const username = profile?.email ?? "you@your-domain";
+
+  const create = useMutation({
+    mutationFn: () => wmCreateAppPassword(label.trim()),
+    onSuccess: (d) => {
+      setCreated({ label: d.label, password: d.password });
+      setLabel("");
+      qc.invalidateQueries({ queryKey: ["wm", "app-passwords"] });
+    },
+    onError: (e) => toast.error(e instanceof WmError ? e.message : "Could not create app password."),
+  });
+
+  const revoke = useMutation({
+    mutationFn: (id: string) => wmRevokeAppPassword(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["wm", "app-passwords"] }); toast.success("App password revoked."); },
+    onError: () => toast.error("Could not revoke."),
+  });
+
+  const grouped = created ? (created.password.match(/.{1,4}/g) ?? []).join(" ") : "";
+  const copy = () => {
+    if (!created) return;
+    navigator.clipboard.writeText(created.password).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">App Passwords</h1>
+        <p className="mt-1 text-sm text-text-secondary">
+          Create a separate password to sign in from a mail app (Outlook, Apple Mail, Thunderbird, your phone) without
+          sharing your main password. Each one can be revoked any time — revoking signs out only that app.
+        </p>
+      </div>
+
+      {/* Just-created password — shown ONCE */}
+      {created && (
+        <Card className="border-primary">
+          <CardContent className="space-y-3 pt-6">
+            <div className="text-sm font-medium">App password for “{created.label}”</div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 select-all rounded-md bg-elevated px-3 py-2 font-mono text-lg tracking-wider">{grouped}</code>
+              <Button variant="outline" size="sm" onClick={copy}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copied" : "Copy"}</Button>
+            </div>
+            <p className="text-xs text-text-secondary">
+              Copy it now — for your security it won’t be shown again. Paste it as the password in your mail app (spaces don’t matter).
+            </p>
+            <Button size="sm" variant="ghost" onClick={() => setCreated(null)}>Done</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Create new */}
+      <Card><CardContent className="space-y-3 pt-6">
+        <Label htmlFor="apnew">Create an app password</Label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input id="apnew" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. iPhone Mail" maxLength={100}
+            onKeyDown={(e) => e.key === "Enter" && label.trim() && create.mutate()} />
+          <Button onClick={() => create.mutate()} loading={create.isPending} disabled={!label.trim()}><Plus className="h-4 w-4" /> Generate</Button>
+        </div>
+      </CardContent></Card>
+
+      {/* Existing */}
+      <Card><CardContent className="pt-6">
+        {isLoading ? (
+          <p className="text-sm text-text-secondary">Loading…</p>
+        ) : !list || list.length === 0 ? (
+          <p className="text-sm text-text-secondary">No app passwords yet.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {list.map((ap: AppPassword) => (
+              <li key={ap.id} className="flex items-center justify-between py-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 font-medium"><KeyRound className="h-4 w-4 text-text-secondary" /> {ap.label}</div>
+                  <div className="text-xs text-text-secondary">
+                    Created {formatDate(new Date(ap.createdAt))}
+                    {ap.lastUsedAt ? ` · last used ${formatDate(new Date(ap.lastUsedAt))}` : " · never used"}
+                  </div>
+                </div>
+                <Button variant="ghost" size="sm" className="text-danger" onClick={() => revoke.mutate(ap.id)} loading={revoke.isPending && revoke.variables === ap.id}>
+                  <Trash2 className="h-4 w-4" /> Revoke
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent></Card>
+
+      {/* Server settings cheat-sheet */}
+      <Card><CardHeader><CardTitle className="text-base">Mail server settings</CardTitle></CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p className="text-text-secondary">Use these in your mail app, with your email as the username and an app password above:</p>
+          <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 font-mono text-xs">
+            <dt className="text-text-secondary">Username</dt><dd>{username}</dd>
+            <dt className="text-text-secondary">IMAP (incoming)</dt><dd>{host} · port 993 · SSL/TLS</dd>
+            <dt className="text-text-secondary">SMTP (outgoing)</dt><dd>{host} · port 587 · STARTTLS</dd>
+          </dl>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -10,8 +10,9 @@ RUN apt-get update && \
 
 COPY dovecot.conf /etc/dovecot/dovecot.conf
 COPY dovecot-sql.conf.ext /etc/dovecot/dovecot-sql.conf.ext
+COPY dovecot-sql-apppw.conf.ext /etc/dovecot/dovecot-sql-apppw.conf.ext
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh && chmod 600 /etc/dovecot/dovecot-sql.conf.ext
+RUN chmod +x /entrypoint.sh && chmod 600 /etc/dovecot/dovecot-sql.conf.ext /etc/dovecot/dovecot-sql-apppw.conf.ext
 
 EXPOSE 993 995 4190 24 12345
 ENTRYPOINT ["/entrypoint.sh"]

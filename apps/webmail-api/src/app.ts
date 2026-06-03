@@ -15,6 +15,7 @@ import publicRoutes from "./routes/public.routes.js";
 import ruleRoutes from "./routes/rule.routes.js";
 import noteRoutes from "./routes/note.routes.js";
 import advancedRoutes from "./routes/advanced.routes.js";
+import appPasswordRoutes from "./routes/apppassword.routes.js";
 import importRoutes from "./routes/import.routes.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -57,6 +58,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       await scope.register(ruleRoutes); // Outlook-style inbox rules
       await scope.register(noteRoutes); // per-email sticky notes
       await scope.register(advancedRoutes); // account, forwarding, blocked senders
+      await scope.register(appPasswordRoutes); // app-specific passwords for external clients
       await scope.register(importRoutes); // import mail from another IMAP account
       await scope.register(publicRoutes); // unauthenticated (tracking + public booking)
     },

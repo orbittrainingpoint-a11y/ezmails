@@ -91,6 +91,13 @@ export const wm2faSetup = () => wm<{ otpauth: string; qrDataUrl: string; recover
 export const wm2faVerify = (code: string) => wm<{ totpEnabled: boolean }>("/auth/2fa/verify", { method: "POST", body: { code } });
 export const wm2faDisable = () => wm("/auth/2fa/disable", { method: "POST" });
 
+// App passwords (configure this mailbox in external IMAP/SMTP clients)
+export interface AppPassword { id: string; label: string; lastUsedAt: string | null; createdAt: string }
+export const wmAppPasswords = () => wm<AppPassword[]>("/app-passwords");
+export const wmCreateAppPassword = (label: string) =>
+  wm<{ id: string; label: string; createdAt: string; password: string }>("/app-passwords", { method: "POST", body: { label } });
+export const wmRevokeAppPassword = (id: string) => wm(`/app-passwords/${id}`, { method: "DELETE" });
+
 // Folder management
 export const wmCreateFolder = (path: string) => wm<{ path: string }>("/folders", { method: "POST", body: { path } });
 export const wmDeleteFolder = (path: string) => wm("/folders/delete", { method: "POST", body: { path } });

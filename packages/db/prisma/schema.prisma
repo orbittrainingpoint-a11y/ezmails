@@ -270,11 +270,30 @@ model Mailbox {
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz
 
-  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  domain       Domain               @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  appPasswords MailboxAppPassword[]
 
   @@index([domainId])
   @@index([email])
   @@map("mailboxes")
+}
+
+// App-specific passwords (Gmail-style) for configuring this mailbox in external
+// IMAP/SMTP clients without exposing the primary password. Dovecot verifies them
+// via a second SQL passdb in delegated mode (see config/dovecot/dovecot-sql-apppw.conf.ext).
+model MailboxAppPassword {
+  id           String    @id @default(uuid()) @db.Uuid
+  mailboxId    String    @map("mailbox_id") @db.Uuid
+  label        String    @db.VarChar(100) // user-chosen name, e.g. "iPhone Mail"
+  passwordHash String    @map("password_hash") @db.VarChar(255) // {BLF-CRYPT}$2a$...
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  mailbox Mailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
+  @@index([mailboxId])
+  @@map("mailbox_app_passwords")
 }
 
 model Alias {

@@ -61,4 +61,7 @@ message_size_limit = 31457280
 smtpd_client_message_rate_limit = 100
 anvil_rate_time_unit = 60s
 
-maillog_file = /dev/stdout
+# Log to a file (via postlogd) so the node agent can tail + ship delivery events
+# into the mail_log table for the admin "Mail Log" view. `docker compose logs
+# postfix` won't show mail lines anymore — query the panel (or this file) instead.
+maillog_file = /var/log/postfix.log

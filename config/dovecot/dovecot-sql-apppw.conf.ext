@@ -1,0 +1,24 @@
+# Dovecot → PostgreSQL: SECOND passdb, app-specific passwords only.
+#
+# Dovecot's SQL passdb cannot iterate multiple password rows, so we use
+# "delegated verification": the query returns NULL password + nopassword=Y and
+# does the bcrypt check itself via pgcrypto's crypt(). A returned row therefore
+# means "this app password matched" and Dovecot accepts the login.
+#
+# The primary mailbox password is still checked by the first passdb
+# (dovecot-sql.conf.ext); this one only adds app passwords, so a problem here can
+# never lock anyone out of their normal password.
+
+driver = pgsql
+connect = host=postgres port=5432 dbname=ezmails user=ezmails_mail password=CHANGE_ME
+
+# %w = the cleartext password the client supplied (Dovecot SQL-escapes it).
+# Strip any {SCHEME} prefix from the stored hash before crypt() compares.
+password_query = \
+  SELECT NULL AS password, 'Y' AS nopassword, m.email AS "user" \
+  FROM mailboxes m \
+  JOIN mailbox_app_passwords ap ON ap.mailbox_id = m.id \
+  WHERE m.email = '%u' AND m.status = 'active' AND ap.revoked_at IS NULL \
+    AND crypt('%w', regexp_replace(ap.password_hash, '^\{[^}]+\}', '')) \
+        = regexp_replace(ap.password_hash, '^\{[^}]+\}', '') \
+  LIMIT 1

@@ -9,6 +9,7 @@ sed -i "s/__MAIL_HOSTNAME__/${MAIL_HOSTNAME}/g" /etc/dovecot/dovecot.conf
 # but honour the env at runtime as a fallback).
 if [ -n "$MAIL_DB_PASSWORD" ]; then
   sed -i "s/password=CHANGE_ME/password=${MAIL_DB_PASSWORD}/" /etc/dovecot/dovecot-sql.conf.ext
+  sed -i "s/password=CHANGE_ME/password=${MAIL_DB_PASSWORD}/" /etc/dovecot/dovecot-sql-apppw.conf.ext
 fi
 
 CERT="/etc/letsencrypt/live/${MAIL_HOSTNAME}/fullchain.pem"
