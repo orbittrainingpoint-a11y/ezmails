@@ -279,6 +279,10 @@ export const wmUnallowSender = (email: string) => wm<string[]>("/senders/allowed
 export interface Identity { email: string; name: string }
 export const wmIdentities = () => wm<Identity[]>("/identities");
 
+// Read tracking (composer "Track")
+export interface Tracker { id: string; subject: string | null; recipients: string | null; opens: number; lastOpenAt: string | null; createdAt: string }
+export const wmTracking = () => wm<Tracker[]>("/tracking");
+
 export const wmImportContacts = (csv: string) => wm<{ imported: number; total: number }>("/contacts/import", { method: "POST", body: { csv } });
 
 export interface ImapImportResult {

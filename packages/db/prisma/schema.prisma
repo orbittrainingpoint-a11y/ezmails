@@ -281,6 +281,22 @@ model Mailbox {
 // App-specific passwords (Gmail-style) for configuring this mailbox in external
 // IMAP/SMTP clients without exposing the primary password. Dovecot verifies them
 // via a second SQL passdb in delegated mode (see config/dovecot/dovecot-sql-apppw.conf.ext).
+// Read-tracking for individual sent emails (the composer "Track" toggle). A 1x1
+// pixel keyed by `token` is embedded; opening the mail pings the public endpoint.
+model EmailTracker {
+  id         String    @id @default(uuid()) @db.Uuid
+  mailboxId  String    @map("mailbox_id") @db.Uuid
+  token      String    @unique @db.VarChar(64)
+  subject    String?   @db.VarChar(255)
+  recipients String?   @db.VarChar(1024)
+  opens      Int       @default(0)
+  lastOpenAt DateTime? @map("last_open_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([mailboxId])
+  @@map("email_trackers")
+}
+
 model MailboxAppPassword {
   id           String    @id @default(uuid()) @db.Uuid
   mailboxId    String    @map("mailbox_id") @db.Uuid

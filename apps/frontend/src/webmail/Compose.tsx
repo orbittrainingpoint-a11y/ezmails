@@ -196,6 +196,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     try {
       const res = await wmSend({
         ...(from ? { from } : {}),
+        ...(track ? { track: true } : {}),
         to: toList,
         cc: cc.split(",").map((s) => s.trim()).filter(Boolean),
         bcc: bcc.split(",").map((s) => s.trim()).filter(Boolean),

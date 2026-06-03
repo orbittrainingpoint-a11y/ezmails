@@ -2,6 +2,7 @@ import { simpleParser } from "mailparser";
 import type { ImapFlow } from "imapflow";
 import { prisma } from "@ezmails/db";
 import { withImap } from "../lib/imap.js";
+import { injectTracker } from "./tracking.service.js";
 import { sendMail, buildRawMessage, type OutgoingAttachment } from "../lib/smtp.js";
 import type { WebmailCreds } from "../lib/session.js";
 import { env } from "../config/env.js";
@@ -276,12 +277,16 @@ export async function resolveFrom(mailboxId: string, requested?: string): Promis
 // ── Send (WM-009…017) ──
 export async function send(
   creds: WebmailCreds,
-  message: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; html?: string; text?: string; attachments?: OutgoingAttachment[]; from?: string },
+  message: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; html?: string; text?: string; attachments?: OutgoingAttachment[]; from?: string; track?: boolean },
 ) {
   if (DEV) return dev.send(creds, message);
-  const { from: requestedFrom, ...rest } = message;
+  const { from: requestedFrom, track, ...rest } = message;
   const fromHeader = await resolveFrom(creds.mailboxId, requestedFrom);
-  const result = await sendMail(creds, { from: fromHeader, ...rest });
+  // Read-tracking: embed an invisible pixel keyed to a new tracker record.
+  const html = track
+    ? await injectTracker(creds.mailboxId, rest.html, { subject: rest.subject, recipients: rest.to }).catch(() => rest.html)
+    : rest.html;
+  const result = await sendMail(creds, { from: fromHeader, ...rest, html });
   // Append an identical copy (with attachments) to Sent, creating the folder if needed.
   await withImap(creds, async (c) => {
     const sent = await findSpecial(c, "\\Sent", "Sent");

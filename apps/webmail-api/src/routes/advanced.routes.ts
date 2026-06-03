@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma, type Prisma } from "@ezmails/db";
 import { getAccount, updateDisplayName, changePassword } from "../services/account.service.js";
+import { listTrackers } from "../services/tracking.service.js";
 
 /** Advanced webmail settings: account, forwarding, blocked senders. */
 export default async function advancedRoutes(app: FastifyInstance) {
@@ -102,6 +103,10 @@ export default async function advancedRoutes(app: FastifyInstance) {
     await writeList(req.creds!.mailboxId, "allowedSenders", list);
     return reply.send({ success: true, data: list });
   });
+
+  // ── Read tracking ──
+  app.get("/tracking", async (req, reply) =>
+    reply.send({ success: true, data: await listTrackers(req.creds!.mailboxId) }));
 
   // ── Send identities (primary address + aliases that deliver to this mailbox) ──
   app.get("/identities", async (req, reply) => {

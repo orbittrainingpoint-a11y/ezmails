@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "@ezmails/db";
 import { markOpened } from "../services/campaign.service.js";
+import { recordOpen } from "../services/tracking.service.js";
 import { getPublicLink, getAvailableSlots, createBooking } from "../services/booking.service.js";
 import { buildIcs } from "../lib/ics.js";
 
@@ -13,6 +14,13 @@ export default async function publicRoutes(app: FastifyInstance) {
   app.get("/public/track/open/:token", async (req, reply) => {
     const { token } = req.params as { token: string };
     await markOpened(token).catch(() => {});
+    return reply.header("content-type", "image/gif").header("cache-control", "no-store").send(PIXEL);
+  });
+
+  // Read-tracking for individual sent emails (composer "Track").
+  app.get("/public/track/email/:token", async (req, reply) => {
+    const { token } = req.params as { token: string };
+    await recordOpen(token).catch(() => {});
     return reply.header("content-type", "image/gif").header("cache-control", "no-store").send(PIXEL);
   });
 

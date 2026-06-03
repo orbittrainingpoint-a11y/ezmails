@@ -23,6 +23,7 @@ import { schedule, listScheduled, cancel, flushDue } from "../services/scheduled
 
 const sendSchema = z.object({
   from: z.string().email().optional(), // send-as: primary address or an alias the mailbox owns
+  track: z.boolean().optional(), // embed a read-tracking pixel
   to: z.array(z.string().email()).min(1),
   cc: z.array(z.string().email()).optional(),
   bcc: z.array(z.string().email()).optional(),

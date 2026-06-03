@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft, KeyRound, Copy, Check, Star, SpellCheck,
+  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft, KeyRound, Copy, Check, Star, SpellCheck, Eye,
 } from "lucide-react";
 import {
   wmAccount, wmUpdateName, wmChangePassword,
@@ -11,6 +11,7 @@ import {
   wmAllowedSenders, wmAllowSender, wmUnallowSender,
   wmImportContacts, wmImportImap, wmGetFullSettings, wmSaveSettings, aiStatus, wmLogout, WmError,
   wmAppPasswords, wmCreateAppPassword, wmRevokeAppPassword, type AppPassword,
+  wmTracking,
 } from "./api";
 import { useWebmail } from "./store";
 import { TwoFactor } from "./TwoFactor";
@@ -29,7 +30,7 @@ import { cn } from "@/lib/cn";
 type SectionId =
   | "account" | "notifications" | "security" | "apppasswords" | "backup" | "ai"
   | "rules" | "priority" | "blocked"
-  | "signature" | "grammar" | "vacation" | "forwarding" | "import" | "importmail"
+  | "signature" | "grammar" | "tracking" | "vacation" | "forwarding" | "import" | "importmail"
   | "branding";
 
 const GROUPS: { label: string; items: { id: SectionId; label: string; icon: typeof User }[] }[] = [
@@ -49,6 +50,7 @@ const GROUPS: { label: string; items: { id: SectionId; label: string; icon: type
   { label: "Send & Reply", items: [
     { id: "signature", label: "Signatures", icon: PenTool },
     { id: "grammar", label: "Grammar & Spelling", icon: SpellCheck },
+    { id: "tracking", label: "Tracking", icon: Eye },
     { id: "vacation", label: "Vacation Responder", icon: Plane },
     { id: "forwarding", label: "Forwarding", icon: Forward },
     { id: "import", label: "Import Contacts", icon: Upload },
@@ -108,6 +110,7 @@ export function Settings() {
           {active === "blocked" && <ManageSendersSection />}
           {active === "signature" && <SignatureDesigner />}
           {active === "grammar" && <GrammarSection />}
+          {active === "tracking" && <TrackingSection />}
           {active === "vacation" && <VacationSection />}
           {active === "forwarding" && <ForwardingSection />}
           {active === "import" && <ImportSection />}
@@ -331,6 +334,42 @@ function PrioritySection() {
             ))}
           </div>
         </div>
+      </CardContent></Card>
+    </div>
+  );
+}
+
+function TrackingSection() {
+  const { data, isLoading } = useQuery({ queryKey: ["wm", "tracking"], queryFn: wmTracking });
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Tracking</h1>
+        <p className="mt-1 text-sm text-text-secondary">When you turn on <strong>Track</strong> in the composer, ezmail embeds an invisible pixel so you can see when a message is opened. Some mail apps block images, so opens are an estimate.</p>
+      </div>
+      <Card><CardContent className="pt-6">
+        {isLoading ? <p className="text-sm text-text-secondary">Loading…</p>
+          : !data || data.length === 0 ? <p className="text-sm text-text-secondary">No tracked messages yet. Toggle “Track” when composing.</p>
+          : (
+            <ul className="divide-y divide-border">
+              {data.map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{t.subject || "(no subject)"}</div>
+                    <div className="truncate text-xs text-text-secondary">To {t.recipients || "—"} · sent {formatDate(new Date(t.createdAt))}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {t.opens > 0 ? (
+                      <>
+                        <div className="flex items-center gap-1 text-sm font-medium text-success"><Eye className="h-4 w-4" /> Opened {t.opens > 1 ? `${t.opens}×` : ""}</div>
+                        {t.lastOpenAt && <div className="text-xs text-text-secondary">{formatDate(new Date(t.lastOpenAt))}</div>}
+                      </>
+                    ) : <span className="text-xs text-text-secondary">Not opened yet</span>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
       </CardContent></Card>
     </div>
   );
