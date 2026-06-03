@@ -7,7 +7,9 @@ import type { Meeting } from "./Calendar";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
 
-interface Task { id: string; text: string; done: boolean }
+// Tasks share storage with the full Tasks page, which uses `title`; tolerate the
+// older `text` shape too.
+interface Task { id: string; title?: string; text?: string; notes?: string; due?: string | null; done: boolean }
 
 /** Far-right Calendar / Tasks panel (Titan-style). Tasks persist in webmail prefs. */
 export function CalendarTasks({ onClose }: { onClose: () => void }) {
@@ -74,7 +76,7 @@ function TasksTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wm", "fullsettings"] }),
   });
 
-  const add = () => { if (!text.trim()) return; save.mutate([...tasks, { id: crypto.randomUUID(), text: text.trim(), done: false }]); setText(""); };
+  const add = () => { if (!text.trim()) return; save.mutate([...tasks, { id: crypto.randomUUID(), title: text.trim(), done: false }]); setText(""); };
   const toggle = (id: string) => save.mutate(tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
   const remove = (id: string) => save.mutate(tasks.filter((t) => t.id !== id));
 
@@ -88,7 +90,7 @@ function TasksTab() {
       {tasks.map((t) => (
         <div key={t.id} className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-sm">
           <button onClick={() => toggle(t.id)} aria-label="Toggle">{t.done ? <CheckSquare className="h-4 w-4 text-success" /> : <Square className="h-4 w-4 text-text-secondary" />}</button>
-          <span className={cn("flex-1", t.done && "text-text-secondary line-through")}>{t.text}</span>
+          <span className={cn("flex-1", t.done && "text-text-secondary line-through")}>{t.title ?? t.text}</span>
           <button onClick={() => remove(t.id)} aria-label="Delete"><Trash2 className="h-4 w-4 text-text-secondary hover:text-danger" /></button>
         </div>
       ))}

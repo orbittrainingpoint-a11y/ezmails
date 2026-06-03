@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, NavLink, Navigate, useNavigate } from "react-router-dom";
-import { Inbox as InboxIcon, Users, Settings as SettingsIcon, LogOut, Megaphone, CalendarDays, PanelRightOpen, HelpCircle, LayoutGrid } from "lucide-react";
+import { Inbox as InboxIcon, Users, Settings as SettingsIcon, LogOut, Megaphone, CalendarDays, PanelRightOpen, HelpCircle, LayoutGrid, CheckSquare } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { wmMe, wmLogout } from "./api";
 import { useWebmail } from "./store";
@@ -10,6 +10,7 @@ import { Settings } from "./Settings";
 import { Campaigns } from "./Campaigns";
 import { Calendar } from "./Calendar";
 import { Planner } from "./Planner";
+import { Tasks } from "./Tasks";
 import { CalendarTasks } from "./CalendarTasks";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
@@ -56,6 +57,7 @@ export function WebmailApp() {
           <nav className="flex items-center gap-0.5 sm:gap-1">
             <NavLink to="/webmail" end className={navCls} title="Mail"><InboxIcon className="h-4 w-4" /> <span className="hidden md:inline">Mail</span></NavLink>
             <NavLink to="/webmail/calendar" className={navCls} title="Calendar"><CalendarDays className="h-4 w-4" /> <span className="hidden md:inline">Calendar</span></NavLink>
+            <NavLink to="/webmail/tasks" className={navCls} title="Tasks"><CheckSquare className="h-4 w-4" /> <span className="hidden md:inline">Tasks</span></NavLink>
             <NavLink to="/webmail/planner" className={navCls} title="Planner"><LayoutGrid className="h-4 w-4" /> <span className="hidden md:inline">Planner</span></NavLink>
             <NavLink to="/webmail/contacts" className={navCls} title="Contacts"><Users className="h-4 w-4" /> <span className="hidden md:inline">Contacts</span></NavLink>
             <NavLink to="/webmail/settings" className={navCls} title="Settings"><SettingsIcon className="h-4 w-4" /> <span className="hidden md:inline">Settings</span></NavLink>
@@ -77,6 +79,7 @@ export function WebmailApp() {
           <Routes>
             <Route index element={<Inbox />} />
             <Route path="calendar" element={<Calendar />} />
+            <Route path="tasks" element={<Tasks />} />
             <Route path="planner" element={<Planner />} />
             <Route path="campaigns" element={<Campaigns />} />
             <Route path="contacts" element={<Contacts />} />

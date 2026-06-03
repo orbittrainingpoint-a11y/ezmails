@@ -98,6 +98,11 @@ export const wmCreateAppPassword = (label: string) =>
   wm<{ id: string; label: string; createdAt: string; password: string }>("/app-passwords", { method: "POST", body: { label } });
 export const wmRevokeAppPassword = (id: string) => wm(`/app-passwords/${id}`, { method: "DELETE" });
 
+// Calendars shared with me (read-only)
+export interface SharedCalEvent { id: string; title: string; startsAt: string; endsAt: string; notes?: string; link?: string }
+export interface SharedCalendar { id: string; name: string; color: string; perm: "view" | "edit"; ownerEmail: string; ownerName: string | null; events: SharedCalEvent[] }
+export const wmSharedCalendars = () => wm<SharedCalendar[]>("/calendars/shared");
+
 // Folder management
 export const wmCreateFolder = (path: string) => wm<{ path: string }>("/folders", { method: "POST", body: { path } });
 export const wmDeleteFolder = (path: string) => wm("/folders/delete", { method: "POST", body: { path } });
