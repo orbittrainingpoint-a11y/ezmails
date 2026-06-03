@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma, type Prisma } from "@ezmails/db";
 import { getAccount, updateDisplayName, changePassword } from "../services/account.service.js";
 import { listTrackers } from "../services/tracking.service.js";
+import { runAutoClean, type AutoCleanRule } from "../services/autoclean.service.js";
 
 /** Advanced webmail settings: account, forwarding, blocked senders. */
 export default async function advancedRoutes(app: FastifyInstance) {
@@ -107,6 +108,14 @@ export default async function advancedRoutes(app: FastifyInstance) {
   // ── Read tracking ──
   app.get("/tracking", async (req, reply) =>
     reply.send({ success: true, data: await listTrackers(req.creds!.mailboxId) }));
+
+  // ── Auto-clean: run the saved rules now ──
+  app.post("/autoclean/run", async (req, reply) => {
+    const s = await prisma.webmailSettings.findUnique({ where: { mailboxId: req.creds!.mailboxId } });
+    const ac = (s?.prefs as { autoClean?: { rules?: AutoCleanRule[] } } | null)?.autoClean;
+    const result = await runAutoClean(req.creds!, ac?.rules ?? []);
+    return reply.send({ success: true, data: result });
+  });
 
   // ── Send identities (primary address + aliases that deliver to this mailbox) ──
   app.get("/identities", async (req, reply) => {

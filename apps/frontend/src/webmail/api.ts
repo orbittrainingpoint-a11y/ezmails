@@ -283,6 +283,9 @@ export const wmIdentities = () => wm<Identity[]>("/identities");
 export interface Tracker { id: string; subject: string | null; recipients: string | null; opens: number; lastOpenAt: string | null; createdAt: string }
 export const wmTracking = () => wm<Tracker[]>("/tracking");
 
+// Auto-clean
+export const wmRunAutoClean = () => wm<{ cleaned: number }>("/autoclean/run", { method: "POST" });
+
 export const wmImportContacts = (csv: string) => wm<{ imported: number; total: number }>("/contacts/import", { method: "POST", body: { csv } });
 
 export interface ImapImportResult {

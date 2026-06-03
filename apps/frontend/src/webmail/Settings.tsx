@@ -11,7 +11,7 @@ import {
   wmAllowedSenders, wmAllowSender, wmUnallowSender,
   wmImportContacts, wmImportImap, wmGetFullSettings, wmSaveSettings, aiStatus, wmLogout, WmError,
   wmAppPasswords, wmCreateAppPassword, wmRevokeAppPassword, type AppPassword,
-  wmTracking,
+  wmTracking, wmRunAutoClean, wmFolders,
 } from "./api";
 import { useWebmail } from "./store";
 import { TwoFactor } from "./TwoFactor";
@@ -29,7 +29,7 @@ import { cn } from "@/lib/cn";
 
 type SectionId =
   | "account" | "notifications" | "security" | "apppasswords" | "backup" | "ai"
-  | "rules" | "priority" | "blocked"
+  | "rules" | "priority" | "blocked" | "autoclean"
   | "signature" | "grammar" | "tracking" | "vacation" | "forwarding" | "import" | "importmail"
   | "branding";
 
@@ -45,6 +45,7 @@ const GROUPS: { label: string; items: { id: SectionId; label: string; icon: type
   { label: "Inbox & Organization", items: [
     { id: "rules", label: "Rules", icon: Filter },
     { id: "priority", label: "Priority Inbox", icon: Star },
+    { id: "autoclean", label: "Auto-clean", icon: Trash2 },
     { id: "blocked", label: "Manage Senders", icon: Ban },
   ] },
   { label: "Send & Reply", items: [
@@ -107,6 +108,7 @@ export function Settings() {
           {active === "ai" && <AISection />}
           {active === "rules" && <div className="-m-6"><Rules /></div>}
           {active === "priority" && <PrioritySection />}
+          {active === "autoclean" && <AutoCleanSection />}
           {active === "blocked" && <ManageSendersSection />}
           {active === "signature" && <SignatureDesigner />}
           {active === "grammar" && <GrammarSection />}
@@ -291,6 +293,74 @@ function ManageSendersSection() {
         onAdd={(e) => allow.mutate(e)} onRemove={(e) => unallow.mutate(e)} adding={allow.isPending} accent="success" />
       <SenderList title="Blocked senders" hint="Mail from these addresses is sent to Spam." items={blocked.data}
         onAdd={(e) => block.mutate(e)} onRemove={(e) => unblock.mutate(e)} adding={block.isPending} accent="danger" />
+    </div>
+  );
+}
+
+interface AutoCleanRule { folder: string; olderThanDays: number; action: "trash" | "delete" }
+
+function AutoCleanSection() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["wm", "fullsettings"], queryFn: wmGetFullSettings });
+  const { data: folders } = useQuery({ queryKey: ["wm", "folders"], queryFn: wmFolders });
+  const prefs = (data?.prefs ?? {}) as Record<string, unknown>;
+  const ac = (prefs.autoClean as { enabled?: boolean; rules?: AutoCleanRule[] } | undefined) ?? {};
+  const enabled = ac.enabled ?? false;
+  const rules = ac.rules ?? [];
+
+  const save = useMutation({
+    mutationFn: (next: { enabled?: boolean; rules?: AutoCleanRule[] }) =>
+      wmSaveSettings({ prefs: { ...prefs, autoClean: { ...ac, ...next } } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wm", "fullsettings"] }),
+  });
+  const run = useMutation({
+    mutationFn: wmRunAutoClean,
+    onSuccess: (r) => toast.success(r.cleaned > 0 ? `Cleaned ${r.cleaned} message${r.cleaned > 1 ? "s" : ""}.` : "Nothing to clean."),
+    onError: () => toast.error("Could not run auto-clean."),
+  });
+
+  const setRule = (i: number, patch: Partial<AutoCleanRule>) =>
+    save.mutate({ rules: rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) });
+  const addRule = () => save.mutate({ rules: [...rules, { folder: "INBOX", olderThanDays: 30, action: "trash" }] });
+  const removeRule = (i: number) => save.mutate({ rules: rules.filter((_, idx) => idx !== i) });
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Auto-clean</h1>
+        <p className="mt-1 text-sm text-text-secondary">Automatically tidy old mail. Rules run when you open your inbox (about twice a day) — or run them now. “Move to Trash” is recoverable; “Delete permanently” is not.</p>
+      </div>
+      <Card><CardContent className="space-y-4 pt-6">
+        <label className="flex items-center justify-between">
+          <span className="text-sm font-medium">Enable auto-clean</span>
+          <input type="checkbox" checked={enabled} onChange={(e) => save.mutate({ enabled: e.target.checked })} className="h-4 w-4" />
+        </label>
+
+        <div className="space-y-2 border-t border-border pt-3">
+          {rules.length === 0 && <p className="text-sm text-text-secondary">No rules yet.</p>}
+          {rules.map((r, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-sm">
+              <span className="text-text-secondary">In</span>
+              <select value={r.folder} onChange={(e) => setRule(i, { folder: e.target.value })} className="h-8 rounded-md border border-border bg-surface px-2 text-xs">
+                {(folders ?? [{ path: "INBOX", name: "Inbox" }]).map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
+              </select>
+              <span className="text-text-secondary">older than</span>
+              <Input type="number" min={1} value={r.olderThanDays} onChange={(e) => setRule(i, { olderThanDays: Number(e.target.value) })} className="h-8 w-20" />
+              <span className="text-text-secondary">days,</span>
+              <select value={r.action} onChange={(e) => setRule(i, { action: e.target.value as AutoCleanRule["action"] })} className="h-8 rounded-md border border-border bg-surface px-2 text-xs">
+                <option value="trash">move to Trash</option>
+                <option value="delete">delete permanently</option>
+              </select>
+              <button onClick={() => removeRule(i)} className="ml-auto text-text-secondary hover:text-danger" aria-label="Remove rule"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+          <Button variant="outline" size="sm" onClick={addRule}><Plus className="h-4 w-4" /> Add rule</Button>
+        </div>
+
+        <div className="border-t border-border pt-3">
+          <Button variant="outline" onClick={() => run.mutate()} loading={run.isPending} disabled={rules.length === 0}><Trash2 className="h-4 w-4" /> Run clean-up now</Button>
+        </div>
+      </CardContent></Card>
     </div>
   );
 }
