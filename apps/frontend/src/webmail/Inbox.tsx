@@ -211,8 +211,13 @@ export function Inbox() {
   }
   async function blockSender() {
     const addr = message.data?.from[0]?.address;
-    if (!addr) return;
-    await wmBlockSender(addr).then(() => toast.success(`Blocked ${addr}.`)).catch(() => toast.error("Failed."));
+    if (!addr || uid === null) return;
+    await wmBlockSender(addr).catch(() => {});
+    // Move the current message to Spam now; future mail is auto-filtered on inbox open.
+    await wmMove(folder, uid, folderByUse("\\Junk", "Junk")).catch(() => {});
+    setUid(null);
+    refreshList();
+    toast.success(`Blocked ${addr} — moved to Spam.`);
   }
 
   function plainText(m: MessageFull): string {

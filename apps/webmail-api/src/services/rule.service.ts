@@ -56,20 +56,43 @@ function matchesRule(
   return rule.matchType === "any" ? conds.some(test) : conds.every(test);
 }
 
+/** Blocked/allowed sender lists from the mailbox prefs (lowercased). */
+async function senderLists(mailboxId: string) {
+  const s = await prisma.webmailSettings.findUnique({ where: { mailboxId } });
+  const prefs = (s?.prefs as Record<string, unknown> | null) ?? {};
+  const blocked = ((prefs.blockedSenders as string[]) ?? []).map((e) => e.toLowerCase());
+  const allowed = new Set(((prefs.allowedSenders as string[]) ?? []).map((e) => e.toLowerCase()));
+  return { blocked, allowed };
+}
+
+// A from-line matches a blocked address (unless the sender is on the allow list).
+function isBlocked(from: string, blocked: string[], allowed: Set<string>): boolean {
+  const hay = from.toLowerCase();
+  if ([...allowed].some((a) => hay.includes(a))) return false;
+  return blocked.some((b) => hay.includes(b));
+}
+
 /**
  * Apply all enabled rules to a source folder (default INBOX): move matching
- * messages to each rule's target folder, optionally marking them read.
+ * messages to each rule's target folder, optionally marking them read. Also
+ * enforces the blocked-sender list by moving those messages to Junk/Spam.
  */
 export async function applyRules(creds: WebmailCreds, mailboxId: string, sourceFolder = "INBOX") {
-  const rules = (await prisma.webmailRule.findMany({ where: { mailboxId, enabled: true }, orderBy: { sortOrder: "asc" } }));
-  if (rules.length === 0) return { moved: 0 };
+  const rules = await prisma.webmailRule.findMany({ where: { mailboxId, enabled: true }, orderBy: { sortOrder: "asc" } });
+  const { blocked, allowed } = await senderLists(mailboxId);
+  if (rules.length === 0 && blocked.length === 0) return { moved: 0 };
 
-  // Dev mail store: apply rules against DevMail rows directly.
+  // Dev mail store: apply rules + blocking against DevMail rows directly.
   if (env.WEBMAIL_DEV_BYPASS_IMAP) {
     const rows = await prisma.devMail.findMany({ where: { mailboxId, folder: sourceFolder } });
     let moved = 0;
     for (const m of rows) {
       const to = ((m.toJson as { address?: string }[] | null) ?? []).map((a) => a.address ?? "").join(" ");
+      if (sourceFolder === "INBOX" && isBlocked(m.fromAddr, blocked, allowed)) {
+        await prisma.devMail.update({ where: { id: m.id }, data: { folder: "Junk" } });
+        moved++;
+        continue;
+      }
       const rule = rules.find((r) => r.targetFolder !== sourceFolder && matchesRule(r, { from: m.fromAddr, to, subject: m.subject }));
       if (!rule) continue;
       await prisma.devMail.update({ where: { id: m.id }, data: { folder: rule.targetFolder, ...(rule.markRead ? { seen: true } : {}) } });
@@ -79,6 +102,8 @@ export async function applyRules(creds: WebmailCreds, mailboxId: string, sourceF
   }
 
   return withImap(creds, async (c) => {
+    const boxes = await c.list();
+    const junk = boxes.find((b) => b.specialUse === "\\Junk")?.path ?? "Junk";
     const lock = await c.getMailboxLock(sourceFolder);
     let moved = 0;
     try {
@@ -92,6 +117,12 @@ export async function applyRules(creds: WebmailCreds, mailboxId: string, sourceF
         });
       }
       for (const msg of items) {
+        // Blocked senders → Junk (skipped if the message is in Junk already).
+        if (sourceFolder !== junk && isBlocked(msg.from, blocked, allowed)) {
+          await c.messageMove({ uid: String(msg.uid) }, junk, { uid: true }).catch(() => {});
+          moved++;
+          continue;
+        }
         const rule = rules.find((r) => r.targetFolder !== sourceFolder && matchesRule(r, msg));
         if (!rule) continue;
         if (rule.markRead) await c.messageFlagsAdd({ uid: String(msg.uid) }, ["\\Seen"], { uid: true }).catch(() => {});
@@ -103,4 +134,13 @@ export async function applyRules(creds: WebmailCreds, mailboxId: string, sourceF
     }
     return { moved };
   });
+}
+
+/** Auto-run rules + blocking on inbox open, throttled to avoid rescanning constantly. */
+const lastRun = new Map<string, number>();
+export async function maybeApplyRules(creds: WebmailCreds, mailboxId: string): Promise<void> {
+  const now = Date.now();
+  if (now - (lastRun.get(mailboxId) ?? 0) < 120_000) return; // at most every 2 min
+  lastRun.set(mailboxId, now);
+  await applyRules(creds, mailboxId, "INBOX").catch(() => {});
 }

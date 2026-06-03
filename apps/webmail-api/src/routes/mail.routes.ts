@@ -21,6 +21,7 @@ import { PassThrough } from "node:stream";
 import { recordUse } from "../services/contact.service.js";
 import { schedule, listScheduled, cancel, flushDue } from "../services/scheduled.service.js";
 import { maybeAutoClean } from "../services/autoclean.service.js";
+import { maybeApplyRules } from "../services/rule.service.js";
 
 const sendSchema = z.object({
   from: z.string().email().optional(), // send-as: primary address or an alias the mailbox owns
@@ -42,6 +43,7 @@ export default async function mailRoutes(app: FastifyInstance) {
 
   app.get("/folders", async (req, reply) => {
     await flushDue(req.creds!).catch(() => {}); // deliver any due scheduled mail on inbox open
+    void maybeApplyRules(req.creds!, req.creds!.mailboxId).catch(() => {}); // throttled: filters + blocked senders
     void maybeAutoClean(req.creds!, req.creds!.mailboxId).catch(() => {}); // throttled, fire-and-forget
     return reply.send({ success: true, data: await listFolders(req.creds!) });
   });

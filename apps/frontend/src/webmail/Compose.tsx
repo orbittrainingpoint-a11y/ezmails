@@ -96,6 +96,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     setShowCc(!!initial?.cc);
     setSubject(initial?.subject ?? "");
     setFrom("");
+    setTrack(false);
     setMinimized(false);
     setAttachments([]);
     setScheduleOpen(false);
