@@ -1,5 +1,6 @@
 import { simpleParser } from "mailparser";
 import type { ImapFlow } from "imapflow";
+import { prisma } from "@ezmails/db";
 import { withImap } from "../lib/imap.js";
 import { sendMail, buildRawMessage, type OutgoingAttachment } from "../lib/smtp.js";
 import type { WebmailCreds } from "../lib/session.js";
@@ -253,13 +254,34 @@ export async function trashMessage(creds: WebmailCreds, folder: string, uid: num
   });
 }
 
+/**
+ * Resolve the From header. Defaults to the mailbox's own address (with display
+ * name). If `requested` is given it must be the primary address or an active,
+ * non-wildcard alias that delivers to this mailbox — otherwise we fall back to
+ * the primary address (never let a user spoof an address they don't own).
+ */
+export async function resolveFrom(mailboxId: string, requested?: string): Promise<string> {
+  const mb = await prisma.mailbox.findUniqueOrThrow({ where: { id: mailboxId }, select: { email: true, displayName: true } });
+  const name = mb.displayName?.trim();
+  const fmt = (addr: string) => (name ? `${name} <${addr}>` : addr);
+  const me = mb.email.toLowerCase();
+  const want = requested?.trim().toLowerCase();
+  if (!want || want === me) return fmt(mb.email);
+
+  const aliases = await prisma.alias.findMany({ where: { isActive: true, isWildcard: false, source: want, destination: { contains: me } } });
+  const allowed = aliases.some((a) => a.destination.split(",").map((d) => d.trim().toLowerCase()).includes(me));
+  return allowed ? fmt(want) : fmt(mb.email);
+}
+
 // ── Send (WM-009…017) ──
 export async function send(
   creds: WebmailCreds,
-  message: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; html?: string; text?: string; attachments?: OutgoingAttachment[] },
+  message: { to: string[]; cc?: string[]; bcc?: string[]; subject: string; html?: string; text?: string; attachments?: OutgoingAttachment[]; from?: string },
 ) {
   if (DEV) return dev.send(creds, message);
-  const result = await sendMail(creds, { from: creds.email, ...message });
+  const { from: requestedFrom, ...rest } = message;
+  const fromHeader = await resolveFrom(creds.mailboxId, requestedFrom);
+  const result = await sendMail(creds, { from: fromHeader, ...rest });
   // Append an identical copy (with attachments) to Sent, creating the folder if needed.
   await withImap(creds, async (c) => {
     const sent = await findSpecial(c, "\\Sent", "Sent");

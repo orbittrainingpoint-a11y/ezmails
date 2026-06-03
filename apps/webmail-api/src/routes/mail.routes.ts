@@ -20,6 +20,7 @@ import { recordUse } from "../services/contact.service.js";
 import { schedule, listScheduled, cancel, flushDue } from "../services/scheduled.service.js";
 
 const sendSchema = z.object({
+  from: z.string().email().optional(), // send-as: primary address or an alias the mailbox owns
   to: z.array(z.string().email()).min(1),
   cc: z.array(z.string().email()).optional(),
   bcc: z.array(z.string().email()).optional(),

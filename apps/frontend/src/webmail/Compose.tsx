@@ -7,7 +7,7 @@ import {
   Minus, Maximize2, ChevronDown, AlignLeft, SpellCheck,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { wmSend, wmSaveDraft, aiDraft, aiGrammar, wmGetFullSettings, wmContacts, WmError } from "./api";
+import { wmSend, wmSaveDraft, aiDraft, aiGrammar, wmGetFullSettings, wmContacts, wmIdentities, WmError } from "./api";
 import { useWebmail } from "./store";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -55,6 +55,8 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
   const [spellcheck, setSpellcheck] = useState(true);
   const [grammarAI, setGrammarAI] = useState(true);
   const [fixing, setFixing] = useState(false);
+  const { data: identities } = useQuery({ queryKey: ["wm", "identities"], queryFn: wmIdentities, staleTime: 300_000 });
+  const [from, setFrom] = useState("");
   const fromEmail = useWebmail((s) => s.profile?.email ?? "");
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
@@ -93,6 +95,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     setCc(initial?.cc ?? "");
     setShowCc(!!initial?.cc);
     setSubject(initial?.subject ?? "");
+    setFrom("");
     setMinimized(false);
     setAttachments([]);
     setScheduleOpen(false);
@@ -192,6 +195,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     setSending(true);
     try {
       const res = await wmSend({
+        ...(from ? { from } : {}),
         to: toList,
         cc: cc.split(",").map((s) => s.trim()).filter(Boolean),
         bcc: bcc.split(",").map((s) => s.trim()).filter(Boolean),
@@ -288,7 +292,15 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
       {!minimized && (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-1 border-b border-border px-4 py-2 text-sm">
-            <div className="text-text-secondary">From: <span className="text-text-primary">{fromEmail}</span></div>
+            {identities && identities.length > 1 ? (
+              <div className="flex items-center gap-2 text-text-secondary">From:
+                <select value={from || identities[0]!.email} onChange={(e) => setFrom(e.target.value)} className="h-7 rounded border border-border bg-surface px-1 text-xs text-text-primary">
+                  {identities.map((i) => <option key={i.email} value={i.email}>{i.email}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div className="text-text-secondary">From: <span className="text-text-primary">{fromEmail}</span></div>
+            )}
             <div className="flex items-center gap-2">
               <RecipientInput placeholder="To" value={to} onChange={setTo} />
               {!showCc && <button onClick={() => setShowCc(true)} className="text-xs text-primary">Cc/Bcc</button>}
