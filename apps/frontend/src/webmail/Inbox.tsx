@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Inbox as InboxIcon, Send, FileText, Trash2, Folder as FolderIcon, Paperclip, Star, Search, FolderPlus, StickyNote, Play, X, Archive, MailOpen, ShieldAlert, Ban, FolderInput, Reply, ReplyAll, Forward, Sparkles, Clock, Tag, Menu, ArrowLeft, SquarePen } from "lucide-react";
+import { Inbox as InboxIcon, Send, FileText, Trash2, Folder as FolderIcon, Paperclip, Star, Search, FolderPlus, StickyNote, Play, X, Archive, MailOpen, ShieldAlert, Ban, FolderInput, Reply, ReplyAll, Forward, Sparkles, Clock, Pencil, Menu, ArrowLeft, SquarePen } from "lucide-react";
 import {
   wmFolders,
   wmFolderCounts,
@@ -11,6 +11,7 @@ import {
   wmMove,
   wmCreateFolder,
   wmDeleteFolder,
+  wmRenameFolder,
   wmApplyRules,
   wmBlockSender,
   wmScheduled,
@@ -43,11 +44,13 @@ const STANDARD = [
   { key: "Trash", label: "Trash", Icon: Trash2, kind: "folder", path: "Trash" },
   { key: "Scheduled", label: "Scheduled", Icon: Clock, kind: "scheduled" },
   { key: "Drafts", label: "Drafts", Icon: FileText, kind: "folder", path: "Drafts" },
-  { key: "Important", label: "Important", Icon: Tag, kind: "folder", path: "Important" },
 ] as const;
 
-const STD_PATHS = new Set(["INBOX", "Sent", "Junk", "Archive", "Trash", "Drafts", "Important"]);
+const STD_PATHS = new Set(["INBOX", "Sent", "Junk", "Archive", "Trash", "Drafts"]);
 const STD_USE = new Set(["\\Sent", "\\Drafts", "\\Trash", "\\Junk", "\\Inbox", "\\Archive"]);
+// Standard sidebar key → IMAP special-use, so navigation matches the server's
+// actual folder paths (which may differ from the literal names above).
+const STD_SPECIAL: Record<string, string> = { Sent: "\\Sent", Spam: "\\Junk", Archive: "\\Archive", Trash: "\\Trash", Drafts: "\\Drafts" };
 
 /** Is this IMAP folder a custom (user-created) one, not a standard mailbox? */
 const isCustomFolder = (f: Folder) =>
@@ -74,7 +77,7 @@ export function Inbox() {
     setUid(null); setSummary(null); setNav(item.key); setSelected(new Set()); setFoldersOpen(false);
     if (item.kind === "starred") { setFolder("INBOX"); setFilter("starred"); }
     else if (item.kind === "scheduled") { setFilter("all"); }
-    else { setFolder(item.path); setFilter("all"); }
+    else { setFolder(realPath(item)); setFilter("all"); }
   }
 
   function toggleSel(id: number, e: React.MouseEvent) {
@@ -103,8 +106,23 @@ export function Inbox() {
   async function removeFolder(path: string) {
     if (!confirm(`Delete folder "${path}"? Messages in it will be lost.`)) return;
     await wmDeleteFolder(path).catch(() => toast.error("Could not delete folder."));
-    if (folder === path) setFolder("INBOX");
+    if (folder === path) { setFolder("INBOX"); setNav("INBOX"); }
     qc.invalidateQueries({ queryKey: ["wm", "folders"] });
+    qc.invalidateQueries({ queryKey: ["wm", "counts"] });
+  }
+
+  async function renameFolder(path: string, current: string) {
+    const name = prompt("Rename folder", current);
+    if (!name?.trim() || name.trim() === current) return;
+    // Preserve any parent path (IMAP hierarchy) when renaming a leaf folder.
+    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
+    const newPath = `${parent}${name.trim()}`;
+    await wmRenameFolder(path, newPath).then(() => {
+      if (folder === path) setFolder(newPath);
+      qc.invalidateQueries({ queryKey: ["wm", "folders"] });
+      qc.invalidateQueries({ queryKey: ["wm", "counts"] });
+      toast.success("Folder renamed.");
+    }).catch(() => toast.error("Could not rename folder."));
   }
 
   async function runRules() {
@@ -117,6 +135,17 @@ export function Inbox() {
 
   const folders = useQuery({ queryKey: ["wm", "folders"], queryFn: wmFolders });
   const counts = useQuery({ queryKey: ["wm", "counts"], queryFn: wmFolderCounts, refetchInterval: 30_000 });
+
+  // Resolve a standard sidebar item to the server's real folder path via special-use,
+  // falling back to the literal name. Fixes "Sent shows empty" when the server stores
+  // special folders at different paths than the hardcoded names.
+  const useToPath: Record<string, string> = {};
+  for (const f of folders.data ?? []) if (f.specialUse) useToPath[f.specialUse] = f.path;
+  const realPath = (item: (typeof STANDARD)[number]): string => {
+    const p = "path" in item ? item.path : "INBOX";
+    const use = STD_SPECIAL[item.key];
+    return (use && useToPath[use]) || p;
+  };
   const messages = useQuery({ queryKey: ["wm", "messages", folder, search], queryFn: () => wmMessages(folder, 1, search || undefined) });
   const scheduled = useQuery({ queryKey: ["wm", "scheduled"], queryFn: wmScheduled });
   const wmSettings = useQuery({ queryKey: ["wm", "fullsettings"], queryFn: wmGetFullSettings });
@@ -128,7 +157,7 @@ export function Inbox() {
   const unreadFor = (item: (typeof STANDARD)[number]): number => {
     if (item.kind === "starred") return 0;
     if (item.kind === "scheduled") return (scheduled.data ?? []).length;
-    return counts.data?.[(item as { path: string }).path]?.unread ?? 0;
+    return counts.data?.[realPath(item)]?.unread ?? 0;
   };
 
   async function cancelScheduled(id: string) {
@@ -321,6 +350,9 @@ export function Inbox() {
                 {(counts.data?.[f.path]?.unread ?? 0) > 0 && (
                   <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">{counts.data![f.path]!.unread}</span>
                 )}
+              </button>
+              <button onClick={() => renameFolder(f.path, f.name)} className="hidden text-text-secondary hover:text-primary group-hover:block" aria-label="Rename folder">
+                <Pencil className="h-3.5 w-3.5" />
               </button>
               <button onClick={() => removeFolder(f.path)} className="hidden text-text-secondary hover:text-danger group-hover:block" aria-label="Delete folder">
                 <X className="h-3.5 w-3.5" />

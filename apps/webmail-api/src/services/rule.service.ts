@@ -104,6 +104,7 @@ export async function applyRules(creds: WebmailCreds, mailboxId: string, sourceF
   return withImap(creds, async (c) => {
     const boxes = await c.list();
     const junk = boxes.find((b) => b.specialUse === "\\Junk")?.path ?? "Junk";
+    if (blocked.length > 0) await c.mailboxCreate(junk).catch(() => {}); // ensure Spam exists
     const lock = await c.getMailboxLock(sourceFolder);
     let moved = 0;
     try {

@@ -86,7 +86,13 @@ export async function listMessages(
 ) {
   if (DEV) return dev.listMessages(creds, opts);
   return withImap(creds, async (c) => {
-    const lock = await c.getMailboxLock(opts.folder);
+    let lock;
+    try {
+      lock = await c.getMailboxLock(opts.folder);
+    } catch {
+      // Folder doesn't exist yet (e.g. Archive before first use) — show it as empty.
+      return { items: [], total: 0, page: opts.page, pageSize: opts.pageSize };
+    }
     try {
       const status = c.mailbox && typeof c.mailbox === "object" ? c.mailbox : null;
       const total = status ? status.exists : 0;
