@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { prisma } from "@ezmails/db";
+import { prisma, type Prisma } from "@ezmails/db";
 import { getAccount, updateDisplayName, changePassword } from "../services/account.service.js";
 
 /** Advanced webmail settings: account, forwarding, blocked senders. */
@@ -71,5 +71,47 @@ export default async function advancedRoutes(app: FastifyInstance) {
     const nextPrefs = { ...prefs, blockedSenders: blocked };
     await prisma.webmailSettings.upsert({ where: { mailboxId }, create: { mailboxId, prefs: nextPrefs }, update: { prefs: nextPrefs } });
     return reply.send({ success: true, data: blocked });
+  });
+
+  // ── Allowed senders / safe list (prefs.allowedSenders) ──
+  const readList = async (mailboxId: string, key: string) => {
+    const s = await prisma.webmailSettings.findUnique({ where: { mailboxId } });
+    return ((s?.prefs as Record<string, string[]> | null)?.[key]) ?? [];
+  };
+  const writeList = async (mailboxId: string, key: string, list: string[]) => {
+    const s = await prisma.webmailSettings.findUnique({ where: { mailboxId } });
+    const prefs = (s?.prefs as Record<string, unknown> | null) ?? {};
+    const nextPrefs = { ...prefs, [key]: list } as Prisma.InputJsonValue;
+    await prisma.webmailSettings.upsert({ where: { mailboxId }, create: { mailboxId, prefs: nextPrefs }, update: { prefs: nextPrefs } });
+  };
+
+  app.get("/senders/allowed", async (req, reply) =>
+    reply.send({ success: true, data: await readList(req.creds!.mailboxId, "allowedSenders") }));
+
+  app.post("/senders/allowed", async (req, reply) => {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    const list = new Set(await readList(req.creds!.mailboxId, "allowedSenders"));
+    list.add(email.toLowerCase());
+    await writeList(req.creds!.mailboxId, "allowedSenders", [...list]);
+    return reply.send({ success: true, data: [...list] });
+  });
+
+  app.delete("/senders/allowed", async (req, reply) => {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    const list = (await readList(req.creds!.mailboxId, "allowedSenders")).filter((e) => e !== email.toLowerCase());
+    await writeList(req.creds!.mailboxId, "allowedSenders", list);
+    return reply.send({ success: true, data: list });
+  });
+
+  // ── Send identities (primary address + aliases that deliver to this mailbox) ──
+  app.get("/identities", async (req, reply) => {
+    const mb = await prisma.mailbox.findUniqueOrThrow({ where: { id: req.creds!.mailboxId }, select: { email: true, displayName: true } });
+    const me = mb.email.toLowerCase();
+    const aliases = await prisma.alias.findMany({ where: { isActive: true, isWildcard: false, destination: { contains: me } } });
+    const aliasAddrs = aliases
+      .filter((a) => a.destination.split(",").map((d) => d.trim().toLowerCase()).includes(me))
+      .map((a) => a.source.toLowerCase());
+    const all = [me, ...aliasAddrs].filter((v, i, arr) => arr.indexOf(v) === i);
+    return reply.send({ success: true, data: all.map((email) => ({ email, name: mb.displayName ?? "" })) });
   });
 }

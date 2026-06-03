@@ -15,6 +15,7 @@ import {
   wmBlockSender,
   wmScheduled,
   wmCancelScheduled,
+  wmGetFullSettings,
   aiReply,
   aiSummarize,
   type Folder,
@@ -118,6 +119,10 @@ export function Inbox() {
   const counts = useQuery({ queryKey: ["wm", "counts"], queryFn: wmFolderCounts, refetchInterval: 30_000 });
   const messages = useQuery({ queryKey: ["wm", "messages", folder, search], queryFn: () => wmMessages(folder, 1, search || undefined) });
   const scheduled = useQuery({ queryKey: ["wm", "scheduled"], queryFn: wmScheduled });
+  const wmSettings = useQuery({ queryKey: ["wm", "fullsettings"], queryFn: wmGetFullSettings });
+  const settingsPrefs = (wmSettings.data?.prefs ?? {}) as Record<string, unknown>;
+  const priorityOn = (settingsPrefs.priorityInbox as boolean | undefined) ?? false;
+  const vipSet = new Set(((settingsPrefs.vipSenders as string[] | undefined) ?? []).map((e) => e.toLowerCase()));
 
   // Unread count for a standard sidebar item (handles the Starred virtual folder).
   const unreadFor = (item: (typeof STANDARD)[number]): number => {
@@ -391,7 +396,10 @@ export function Inbox() {
                 <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", m.seen ? "bg-transparent" : "bg-primary")} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between">
-                    <span className={cn("truncate text-sm", !m.seen && "font-semibold")}>{m.from[0]?.name || m.from[0]?.address || "Unknown"}</span>
+                    <span className="flex min-w-0 items-center gap-1">
+                      {priorityOn && vipSet.has((m.from[0]?.address ?? "").toLowerCase()) && <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500" aria-label="VIP" />}
+                      <span className={cn("truncate text-sm", !m.seen && "font-semibold")}>{m.from[0]?.name || m.from[0]?.address || "Unknown"}</span>
+                    </span>
                     <span className="shrink-0 text-xs text-text-secondary">{formatRelative(m.date)}</span>
                   </div>
                   <div className="flex items-center gap-1">

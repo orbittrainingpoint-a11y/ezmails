@@ -4,10 +4,10 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
   Bold, Italic, Underline, List, ListOrdered, Link2, Paperclip, X, Send, Sparkles, FileText,
   MousePointerClick, Palette, Users, Smile, Image as ImageIcon, PenLine, Clock, Trash2,
-  Minus, Maximize2, ChevronDown, AlignLeft,
+  Minus, Maximize2, ChevronDown, AlignLeft, SpellCheck,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { wmSend, wmSaveDraft, aiDraft, wmGetFullSettings, wmContacts, WmError } from "./api";
+import { wmSend, wmSaveDraft, aiDraft, aiGrammar, wmGetFullSettings, wmContacts, WmError } from "./api";
 import { useWebmail } from "./store";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -52,6 +52,9 @@ const DESIGN_TEMPLATES: { label: string; html: string }[] = [
 export function Compose({ open, onClose, initial }: { open: boolean; onClose: () => void; initial?: ComposeInitial }) {
   const navigate = useNavigate();
   const editorRef = useRef<HTMLDivElement>(null);
+  const [spellcheck, setSpellcheck] = useState(true);
+  const [grammarAI, setGrammarAI] = useState(true);
+  const [fixing, setFixing] = useState(false);
   const fromEmail = useWebmail((s) => s.profile?.email ?? "");
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
@@ -102,6 +105,17 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Load grammar/spell prefs when the composer opens.
+  useEffect(() => {
+    if (!open) return;
+    wmGetFullSettings().then((s) => {
+      const p = ((s?.prefs ?? {}) as Record<string, unknown>);
+      setSpellcheck((p.spellcheck as boolean | undefined) ?? true);
+      setGrammarAI((p.grammarAI as boolean | undefined) ?? true);
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   // Undo-send countdown tick. Must stay ABOVE the early return (Rules of Hooks).
   useEffect(() => {
     if (countdown === null) return;
@@ -140,6 +154,21 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
 
   function insertTemplate(html: string) {
     if (editorRef.current) editorRef.current.innerHTML += html;
+  }
+
+  async function fixGrammar() {
+    const html = editorRef.current?.innerHTML ?? "";
+    if (!html.replace(/<[^>]+>/g, "").trim()) { toast.info("Nothing to proofread yet."); return; }
+    setFixing(true);
+    try {
+      const res = await aiGrammar(html, true);
+      if (editorRef.current && res.text) editorRef.current.innerHTML = res.text;
+      toast.success("Proofread complete.");
+    } catch {
+      toast.error("Couldn’t proofread — check AI is enabled in Settings → AI Assistant.");
+    } finally {
+      setFixing(false);
+    }
   }
 
   async function runAi() {
@@ -289,6 +318,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
             <ToolBtn icon={Sparkles} label="AI Write" onClick={() => setAiOpen((v) => !v)} active={aiOpen} />
+            {grammarAI && <ToolBtn icon={SpellCheck} label={fixing ? "Checking…" : "Fix grammar"} onClick={fixGrammar} />}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button className="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-elevated"><FileText className="h-4 w-4" /> <span className="hidden xl:inline">Templates</span></button>
@@ -316,7 +346,7 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
             </div>
           )}
 
-          <div ref={editorRef} contentEditable suppressContentEditableWarning className="min-h-[12rem] flex-1 overflow-auto px-4 py-3 text-sm focus:outline-none" />
+          <div ref={editorRef} contentEditable spellCheck={spellcheck} suppressContentEditableWarning className="min-h-[12rem] flex-1 overflow-auto px-4 py-3 text-sm focus:outline-none" />
 
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-4 pb-2">

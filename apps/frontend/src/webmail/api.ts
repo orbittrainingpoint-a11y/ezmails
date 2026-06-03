@@ -184,6 +184,8 @@ export const aiReply = (original: string, instruction?: string, tone?: string) =
   wm<{ body: string }>("/ai/reply", { method: "POST", body: { original, instruction, tone } });
 export const aiSummarize = (text: string) =>
   wm<{ summary: string }>("/ai/summarize", { method: "POST", body: { text } });
+export const aiGrammar = (text: string, html?: boolean) =>
+  wm<{ text: string }>("/ai/grammar", { method: "POST", body: { text, html } });
 
 // ── Titan: Email Campaigns ──
 export interface Campaign {
@@ -269,6 +271,13 @@ export const wmDeleteForwarding = (id: string) => wm(`/forwarding/${id}`, { meth
 export const wmBlockedSenders = () => wm<string[]>("/senders/blocked");
 export const wmBlockSender = (email: string) => wm<string[]>("/senders/blocked", { method: "POST", body: { email } });
 export const wmUnblockSender = (email: string) => wm<string[]>("/senders/blocked", { method: "DELETE", body: { email } });
+export const wmAllowedSenders = () => wm<string[]>("/senders/allowed");
+export const wmAllowSender = (email: string) => wm<string[]>("/senders/allowed", { method: "POST", body: { email } });
+export const wmUnallowSender = (email: string) => wm<string[]>("/senders/allowed", { method: "DELETE", body: { email } });
+
+// Send identities (primary address + aliases that deliver to this mailbox)
+export interface Identity { email: string; name: string }
+export const wmIdentities = () => wm<Identity[]>("/identities");
 
 export const wmImportContacts = (csv: string) => wm<{ imported: number; total: number }>("/contacts/import", { method: "POST", body: { csv } });
 

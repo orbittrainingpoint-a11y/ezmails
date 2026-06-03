@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft, KeyRound, Copy, Check,
+  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft, KeyRound, Copy, Check, Star, SpellCheck,
 } from "lucide-react";
 import {
   wmAccount, wmUpdateName, wmChangePassword,
   wmForwarding, wmAddForwarding, wmDeleteForwarding,
   wmBlockedSenders, wmBlockSender, wmUnblockSender,
+  wmAllowedSenders, wmAllowSender, wmUnallowSender,
   wmImportContacts, wmImportImap, wmGetFullSettings, wmSaveSettings, aiStatus, wmLogout, WmError,
   wmAppPasswords, wmCreateAppPassword, wmRevokeAppPassword, type AppPassword,
 } from "./api";
@@ -27,8 +28,8 @@ import { cn } from "@/lib/cn";
 
 type SectionId =
   | "account" | "notifications" | "security" | "apppasswords" | "ai"
-  | "rules" | "blocked"
-  | "signature" | "vacation" | "forwarding" | "import" | "importmail"
+  | "rules" | "priority" | "blocked"
+  | "signature" | "grammar" | "vacation" | "forwarding" | "import" | "importmail"
   | "branding";
 
 const GROUPS: { label: string; items: { id: SectionId; label: string; icon: typeof User }[] }[] = [
@@ -41,10 +42,12 @@ const GROUPS: { label: string; items: { id: SectionId; label: string; icon: type
   ] },
   { label: "Inbox & Organization", items: [
     { id: "rules", label: "Rules", icon: Filter },
-    { id: "blocked", label: "Blocked Senders", icon: Ban },
+    { id: "priority", label: "Priority Inbox", icon: Star },
+    { id: "blocked", label: "Manage Senders", icon: Ban },
   ] },
   { label: "Send & Reply", items: [
     { id: "signature", label: "Signatures", icon: PenTool },
+    { id: "grammar", label: "Grammar & Spelling", icon: SpellCheck },
     { id: "vacation", label: "Vacation Responder", icon: Plane },
     { id: "forwarding", label: "Forwarding", icon: Forward },
     { id: "import", label: "Import Contacts", icon: Upload },
@@ -99,8 +102,10 @@ export function Settings() {
           {active === "apppasswords" && <AppPasswordsSection />}
           {active === "ai" && <AISection />}
           {active === "rules" && <div className="-m-6"><Rules /></div>}
-          {active === "blocked" && <BlockedSection />}
+          {active === "priority" && <PrioritySection />}
+          {active === "blocked" && <ManageSendersSection />}
           {active === "signature" && <SignatureDesigner />}
+          {active === "grammar" && <GrammarSection />}
           {active === "vacation" && <VacationSection />}
           {active === "forwarding" && <ForwardingSection />}
           {active === "import" && <ImportSection />}
@@ -234,27 +239,126 @@ function AISection() {
   );
 }
 
-function BlockedSection() {
-  const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["wm", "blocked"], queryFn: wmBlockedSenders });
+/** Reusable email-list editor backed by a query + add/remove mutations. */
+function SenderList({ title, hint, items, onAdd, onRemove, adding, accent }: {
+  title: string; hint: string; items: string[] | undefined;
+  onAdd: (email: string) => void; onRemove: (email: string) => void; adding: boolean; accent: "danger" | "success";
+}) {
   const [email, setEmail] = useState("");
-  const add = useMutation({ mutationFn: () => wmBlockSender(email), onSuccess: () => { qc.invalidateQueries({ queryKey: ["wm", "blocked"] }); setEmail(""); } });
-  const rm = useMutation({ mutationFn: (e: string) => wmUnblockSender(e), onSuccess: () => qc.invalidateQueries({ queryKey: ["wm", "blocked"] }) });
+  return (
+    <Card><CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-text-secondary">{hint}</p>
+        <div className="flex gap-2">
+          <Input placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && email.trim()) { onAdd(email.trim()); setEmail(""); } }} />
+          <Button onClick={() => { onAdd(email.trim()); setEmail(""); }} loading={adding} disabled={!email.trim()}><Plus className="h-4 w-4" /> Add</Button>
+        </div>
+        {items?.length === 0 && <p className="text-sm text-text-secondary">Nothing here yet.</p>}
+        <div className="space-y-1">
+          {items?.map((e) => (
+            <div key={e} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+              <span className="min-w-0 truncate">{e}</span>
+              <Button variant="ghost" size="icon" onClick={() => onRemove(e)} aria-label="Remove"><Trash2 className={cn("h-4 w-4", accent === "danger" ? "text-danger" : "text-text-secondary hover:text-danger")} /></Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ManageSendersSection() {
+  const qc = useQueryClient();
+  const blocked = useQuery({ queryKey: ["wm", "blocked"], queryFn: wmBlockedSenders });
+  const allowed = useQuery({ queryKey: ["wm", "allowed"], queryFn: wmAllowedSenders });
+  const block = useMutation({ mutationFn: (e: string) => wmBlockSender(e), onSuccess: () => qc.invalidateQueries({ queryKey: ["wm", "blocked"] }) });
+  const unblock = useMutation({ mutationFn: (e: string) => wmUnblockSender(e), onSuccess: () => qc.invalidateQueries({ queryKey: ["wm", "blocked"] }) });
+  const allow = useMutation({ mutationFn: (e: string) => wmAllowSender(e), onSuccess: () => qc.invalidateQueries({ queryKey: ["wm", "allowed"] }) });
+  const unallow = useMutation({ mutationFn: (e: string) => wmUnallowSender(e), onSuccess: () => qc.invalidateQueries({ queryKey: ["wm", "allowed"] }) });
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Blocked Senders</h1>
-      <Card><CardContent className="space-y-3">
-        <div className="flex gap-2">
-          <Input placeholder="spammer@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Button onClick={() => add.mutate()} loading={add.isPending} disabled={!email}><Plus className="h-4 w-4" /> Block</Button>
-        </div>
-        {data?.length === 0 && <p className="text-sm text-text-secondary">No blocked senders.</p>}
-        {data?.map((e) => (
-          <div key={e} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-            <span>{e}</span>
-            <Button variant="ghost" size="icon" onClick={() => rm.mutate(e)} aria-label="Unblock"><Trash2 className="h-4 w-4 text-danger" /></Button>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Manage Senders</h1>
+        <p className="mt-1 text-sm text-text-secondary">Mail from blocked senders is moved to Spam by your inbox rules; allowed (safe) senders always reach your inbox.</p>
+      </div>
+      <SenderList title="Safe senders (allow list)" hint="These addresses are trusted and never marked as spam." items={allowed.data}
+        onAdd={(e) => allow.mutate(e)} onRemove={(e) => unallow.mutate(e)} adding={allow.isPending} accent="success" />
+      <SenderList title="Blocked senders" hint="Mail from these addresses is sent to Spam." items={blocked.data}
+        onAdd={(e) => block.mutate(e)} onRemove={(e) => unblock.mutate(e)} adding={block.isPending} accent="danger" />
+    </div>
+  );
+}
+
+function PrioritySection() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["wm", "fullsettings"], queryFn: wmGetFullSettings });
+  const prefs = (data?.prefs ?? {}) as Record<string, unknown>;
+  const enabled = (prefs.priorityInbox as boolean | undefined) ?? false;
+  const vips = (prefs.vipSenders as string[] | undefined) ?? [];
+  const [email, setEmail] = useState("");
+  const save = useMutation({
+    mutationFn: (next: Record<string, unknown>) => wmSaveSettings({ prefs: { ...prefs, ...next } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wm", "fullsettings"] }),
+  });
+  const addVip = () => { const e = email.trim().toLowerCase(); if (!e || vips.includes(e)) { setEmail(""); return; } save.mutate({ vipSenders: [...vips, e] }); setEmail(""); };
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Priority Inbox</h1>
+        <p className="mt-1 text-sm text-text-secondary">Highlight mail from important people so it stands out in your inbox.</p>
+      </div>
+      <Card><CardContent className="space-y-4">
+        <label className="flex items-center justify-between">
+          <span className="text-sm font-medium">Mark VIP senders in the message list</span>
+          <input type="checkbox" checked={enabled} onChange={(e) => save.mutate({ priorityInbox: e.target.checked })} className="h-4 w-4" />
+        </label>
+        <div className="border-t border-border pt-3">
+          <Label className="mb-1 flex items-center gap-1"><Star className="h-4 w-4 text-amber-500" /> VIP people</Label>
+          <div className="flex gap-2">
+            <Input placeholder="boss@company.com" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addVip()} />
+            <Button onClick={addVip} disabled={!email.trim()}><Plus className="h-4 w-4" /> Add</Button>
           </div>
-        ))}
+          <div className="mt-3 space-y-1">
+            {vips.length === 0 && <p className="text-sm text-text-secondary">No VIP senders yet.</p>}
+            {vips.map((e) => (
+              <div key={e} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+                <span className="flex items-center gap-2"><Star className="h-3.5 w-3.5 text-amber-500" /> {e}</span>
+                <Button variant="ghost" size="icon" onClick={() => save.mutate({ vipSenders: vips.filter((x) => x !== e) })} aria-label="Remove"><Trash2 className="h-4 w-4 text-text-secondary hover:text-danger" /></Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent></Card>
+    </div>
+  );
+}
+
+function GrammarSection() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["wm", "fullsettings"], queryFn: wmGetFullSettings });
+  const prefs = (data?.prefs ?? {}) as Record<string, unknown>;
+  const spellcheck = (prefs.spellcheck as boolean | undefined) ?? true;
+  const grammarAI = (prefs.grammarAI as boolean | undefined) ?? true;
+  const save = useMutation({
+    mutationFn: (next: Record<string, unknown>) => wmSaveSettings({ prefs: { ...prefs, ...next } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["wm", "fullsettings"] }); toast.success("Saved."); },
+  });
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Grammar & Spelling</h1>
+        <p className="mt-1 text-sm text-text-secondary">Catch mistakes while you write.</p>
+      </div>
+      <Card><CardContent className="space-y-4">
+        <label className="flex items-center justify-between">
+          <span><span className="text-sm font-medium">Spell check while typing</span><span className="block text-xs text-text-secondary">Red underline misspelled words in the composer.</span></span>
+          <input type="checkbox" checked={spellcheck} onChange={(e) => save.mutate({ spellcheck: e.target.checked })} className="h-4 w-4" />
+        </label>
+        <label className="flex items-center justify-between border-t border-border pt-4">
+          <span><span className="flex items-center gap-1 text-sm font-medium"><Sparkles className="h-4 w-4" /> AI “Fix grammar” button</span><span className="block text-xs text-text-secondary">Show a one-click proofread button in the composer (uses your AI provider).</span></span>
+          <input type="checkbox" checked={grammarAI} onChange={(e) => save.mutate({ grammarAI: e.target.checked })} className="h-4 w-4" />
+        </label>
       </CardContent></Card>
     </div>
   );

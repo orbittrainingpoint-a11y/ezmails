@@ -32,6 +32,22 @@ export async function quickReply(input: { original: string; instruction?: string
   return { body };
 }
 
+/** Fix grammar/spelling of a draft without changing its meaning or tone. */
+export async function fixGrammar(input: { text: string; html?: boolean }): Promise<{ text: string }> {
+  const text = await aiGenerate({
+    system:
+      "You are a proofreader. Correct spelling, grammar, and punctuation in the user's text. " +
+      "Preserve the original meaning, tone, language, and formatting. Do NOT add, remove, or rephrase content beyond fixing errors. " +
+      (input.html
+        ? "The input is HTML — return corrected HTML only, keeping the same tags. "
+        : "Return plain corrected text only. ") +
+      "No commentary, no markdown fences.",
+    prompt: input.text.slice(0, 8000),
+    maxTokens: 1500,
+  });
+  return { text: text.trim() };
+}
+
 /** Summarize a message into a few bullet points (AI Summary). */
 export async function summarizeEmail(input: { text: string }): Promise<{ summary: string }> {
   const summary = await aiGenerate({
