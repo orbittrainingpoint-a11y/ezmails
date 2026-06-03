@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft, KeyRound, Copy, Check, Star, SpellCheck, Eye,
+  User, Bell, ShieldCheck, Sparkles, Filter, Ban, PenTool, Plane, Forward, Upload, Info, Trash2, Plus, LogOut, Download, ArrowLeft, KeyRound, Copy, Check, Star, SpellCheck, Eye, Clock,
 } from "lucide-react";
 import {
   wmAccount, wmUpdateName, wmChangePassword,
@@ -30,7 +30,7 @@ import { cn } from "@/lib/cn";
 type SectionId =
   | "account" | "notifications" | "security" | "apppasswords" | "backup" | "ai"
   | "rules" | "priority" | "blocked" | "autoclean"
-  | "signature" | "grammar" | "tracking" | "vacation" | "forwarding" | "import" | "importmail"
+  | "signature" | "grammar" | "tracking" | "vacation" | "business" | "forwarding" | "import" | "importmail"
   | "branding";
 
 const GROUPS: { label: string; items: { id: SectionId; label: string; icon: typeof User }[] }[] = [
@@ -53,6 +53,7 @@ const GROUPS: { label: string; items: { id: SectionId; label: string; icon: type
     { id: "grammar", label: "Grammar & Spelling", icon: SpellCheck },
     { id: "tracking", label: "Tracking", icon: Eye },
     { id: "vacation", label: "Vacation Responder", icon: Plane },
+    { id: "business", label: "Business Auto-reply", icon: Clock },
     { id: "forwarding", label: "Forwarding", icon: Forward },
     { id: "import", label: "Import Contacts", icon: Upload },
     { id: "importmail", label: "Import Email", icon: Download },
@@ -114,6 +115,7 @@ export function Settings() {
           {active === "grammar" && <GrammarSection />}
           {active === "tracking" && <TrackingSection />}
           {active === "vacation" && <VacationSection />}
+          {active === "business" && <BusinessReplySection />}
           {active === "forwarding" && <ForwardingSection />}
           {active === "import" && <ImportSection />}
           {active === "importmail" && <ImportMailSection />}
@@ -440,6 +442,63 @@ function TrackingSection() {
               ))}
             </ul>
           )}
+      </CardContent></Card>
+    </div>
+  );
+}
+
+interface BusinessReply { enabled?: boolean; subject?: string; message?: string; startHour?: number; endHour?: number; days?: number[]; onlyOutsideHours?: boolean }
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function BusinessReplySection() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["wm", "fullsettings"], queryFn: wmGetFullSettings });
+  const prefs = (data?.prefs ?? {}) as Record<string, unknown>;
+  const br = (prefs.businessReply as BusinessReply | undefined) ?? {};
+  const days = br.days ?? [1, 2, 3, 4, 5];
+  const save = useMutation({
+    mutationFn: (next: BusinessReply) => wmSaveSettings({ prefs: { ...prefs, businessReply: { ...br, ...next } } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["wm", "fullsettings"] }); toast.success("Saved."); },
+  });
+  const toggleDay = (d: number) => save.mutate({ days: days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort() });
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Business Auto-reply</h1>
+        <p className="mt-1 text-sm text-text-secondary">Automatically reply to incoming mail (e.g. “Thanks, we’ll respond within one business day”), optionally only outside your working hours.</p>
+      </div>
+      <Card><CardContent className="space-y-4 pt-6">
+        <label className="flex items-center justify-between">
+          <span className="text-sm font-medium">Enable business auto-reply</span>
+          <input type="checkbox" checked={br.enabled ?? false} onChange={(e) => save.mutate({ enabled: e.target.checked })} className="h-4 w-4" />
+        </label>
+        <div><Label>Subject</Label><Input defaultValue={br.subject ?? "Thanks for your message"} onBlur={(e) => save.mutate({ subject: e.target.value })} /></div>
+        <div>
+          <Label>Message</Label>
+          <textarea defaultValue={br.message ?? ""} onBlur={(e) => save.mutate({ message: e.target.value })} rows={4} placeholder="We’ve received your email and will get back to you within one business day."
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+        </div>
+        <div className="border-t border-border pt-3">
+          <Label className="mb-1">Working days</Label>
+          <div className="flex flex-wrap gap-1">
+            {DAY_LABELS.map((d, i) => (
+              <button key={d} onClick={() => toggleDay(i)} className={cn("rounded-md border px-2.5 py-1 text-xs", days.includes(i) ? "border-primary bg-primary/15 text-primary" : "border-border text-text-secondary")}>{d}</button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><Label>Working hours start</Label><Input type="number" min={0} max={23} defaultValue={br.startHour ?? 9} onBlur={(e) => save.mutate({ startHour: Number(e.target.value) })} /></div>
+          <div><Label>Working hours end</Label><Input type="number" min={0} max={23} defaultValue={br.endHour ?? 17} onBlur={(e) => save.mutate({ endHour: Number(e.target.value) })} /></div>
+        </div>
+        <label className="flex items-center justify-between">
+          <span className="text-sm">Only reply outside working hours / days</span>
+          <input type="checkbox" checked={br.onlyOutsideHours ?? true} onChange={(e) => save.mutate({ onlyOutsideHours: e.target.checked })} className="h-4 w-4" />
+        </label>
+        <p className="flex items-start gap-2 rounded-md border border-border bg-elevated/50 p-3 text-xs text-text-secondary">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          Auto-replies (this and the Vacation Responder) are sent by the mail server. Your settings are saved now; the server-side responder that delivers them is a separate update — enabling it requires the Dovecot Sieve responder to be turned on.
+        </p>
       </CardContent></Card>
     </div>
   );
