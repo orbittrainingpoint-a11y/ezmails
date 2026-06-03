@@ -12,6 +12,7 @@ import {
   wmCreateFolder,
   wmDeleteFolder,
   wmRenameFolder,
+  wmEmptyFolder,
   wmApplyRules,
   wmBlockSender,
   wmScheduled,
@@ -123,6 +124,16 @@ export function Inbox() {
       qc.invalidateQueries({ queryKey: ["wm", "counts"] });
       toast.success("Folder renamed.");
     }).catch(() => toast.error("Could not rename folder."));
+  }
+
+  async function emptyCurrent() {
+    const label = folder === folderByUse("\\Trash", "Trash") ? "Trash" : "Spam";
+    if (!confirm(`Permanently delete all messages in ${label}? This cannot be undone.`)) return;
+    const r = await wmEmptyFolder(folder).catch(() => null);
+    setUid(null);
+    refreshList();
+    qc.invalidateQueries({ queryKey: ["wm", "counts"] });
+    if (r) toast.success(`${label} emptied (${r.deleted} removed).`);
   }
 
   async function runRules() {
@@ -247,6 +258,20 @@ export function Inbox() {
     setUid(null);
     refreshList();
     toast.success(`Blocked ${addr} — moved to Spam.`);
+  }
+
+  // Resume a saved draft: load it into the composer and remove the stored copy.
+  function editDraft() {
+    const m = message.data;
+    if (!m || uid === null) return;
+    setCompose({ open: true, initial: {
+      to: m.to.map((a) => a.address).filter(Boolean).join(", "),
+      cc: m.cc.map((a) => a.address).filter(Boolean).join(", "),
+      subject: m.subject === "(no subject)" ? "" : m.subject,
+      html: m.html ?? (m.text ? `<p>${m.text.replace(/\n/g, "<br/>")}</p>` : ""),
+      focusBody: true,
+    } });
+    wmTrash(folder, uid).then(() => { setUid(null); refreshList(); }).catch(() => {});
   }
 
   function plainText(m: MessageFull): string {
@@ -374,11 +399,16 @@ export function Inbox() {
           </div>
           <div className="flex items-center justify-between px-1">
             <span className="text-sm font-semibold">{STANDARD.find((s) => s.key === nav)?.label ?? folders.data?.find((f) => f.path === folder)?.name ?? folder}</span>
+            <div className="flex items-center gap-2">
+            {(folder === folderByUse("\\Trash", "Trash") || folder === folderByUse("\\Junk", "Junk")) && (
+              <button onClick={emptyCurrent} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-danger hover:bg-danger/10"><Trash2 className="h-3.5 w-3.5" /> Empty</button>
+            )}
             <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="h-7 rounded-md border border-border bg-surface px-2 text-xs">
               <option value="all">All emails</option>
               <option value="unread">Unread</option>
               <option value="starred">Starred</option>
             </select>
+            </div>
           </div>
           {selected.size > 0 && (
             <div className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs">
@@ -463,6 +493,7 @@ export function Inbox() {
           {/* Titan-style action toolbar */}
           <div className="sticky top-0 z-10 flex flex-wrap items-center gap-1 border-b border-border bg-surface px-4 py-2">
             <button onClick={() => setUid(null)} className="mr-1 flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-text-secondary hover:bg-elevated lg:hidden" aria-label="Back"><ArrowLeft className="h-4 w-4" /> Back</button>
+            {folder === folderByUse("\\Drafts", "Drafts") && <ToolbarBtn icon={Pencil} label="Edit draft" onClick={editDraft} active />}
             <ToolbarBtn icon={Archive} label="Archive" onClick={() => moveTo(folderByUse("\\Archive", "Archive"))} />
             <ToolbarBtn icon={Trash2} label="Delete" onClick={() => onTrash(message.data!)} danger />
             <ToolbarBtn icon={message.data.flagged ? Star : Star} label="Star" onClick={() => wmFlag(folder, uid, { flagged: !message.data!.flagged }).then(refreshList)} active={message.data.flagged} />

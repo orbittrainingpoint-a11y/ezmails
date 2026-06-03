@@ -107,6 +107,7 @@ export const wmSharedCalendars = () => wm<SharedCalendar[]>("/calendars/shared")
 export const wmCreateFolder = (path: string) => wm<{ path: string }>("/folders", { method: "POST", body: { path } });
 export const wmDeleteFolder = (path: string) => wm("/folders/delete", { method: "POST", body: { path } });
 export const wmRenameFolder = (path: string, newPath: string) => wm<{ path: string }>("/folders/rename", { method: "POST", body: { path, newPath } });
+export const wmEmptyFolder = (path: string) => wm<{ deleted: number }>("/folders/empty", { method: "POST", body: { path } });
 
 // Inbox rules (Outlook-style)
 export interface Rule {

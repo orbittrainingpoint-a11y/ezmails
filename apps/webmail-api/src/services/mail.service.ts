@@ -71,6 +71,30 @@ export async function deleteFolder(creds: WebmailCreds, path: string) {
   });
 }
 
+/** Permanently delete every message in a folder (used for Empty Trash / Spam). */
+export async function emptyFolder(creds: WebmailCreds, path: string) {
+  if (DEV) {
+    const r = await prisma.devMail.deleteMany({ where: { mailboxId: creds.mailboxId, folder: path } });
+    return { deleted: r.count };
+  }
+  return withImap(creds, async (c) => {
+    let lock;
+    try {
+      lock = await c.getMailboxLock(path);
+    } catch {
+      return { deleted: 0 };
+    }
+    try {
+      const status = c.mailbox && typeof c.mailbox === "object" ? c.mailbox : null;
+      const count = status ? status.exists : 0;
+      if (count > 0) await c.messageDelete("1:*").catch(() => {});
+      return { deleted: count };
+    } finally {
+      lock.release();
+    }
+  });
+}
+
 export async function renameFolder(creds: WebmailCreds, path: string, newPath: string) {
   if (DEV) return dev.renameFolder(creds, path, newPath);
   return withImap(creds, async (c) => {

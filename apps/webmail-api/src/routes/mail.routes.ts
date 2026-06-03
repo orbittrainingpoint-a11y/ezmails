@@ -7,6 +7,7 @@ import {
   createFolder,
   deleteFolder,
   renameFolder,
+  emptyFolder,
   listMessages,
   getMessage,
   getAttachment,
@@ -70,6 +71,11 @@ export default async function mailRoutes(app: FastifyInstance) {
   app.post("/folders/rename", async (req, reply) => {
     const { path, newPath } = z.object({ path: z.string().min(1), newPath: z.string().min(1) }).parse(req.body);
     return reply.send({ success: true, data: await renameFolder(req.creds!, path, newPath) });
+  });
+
+  app.post("/folders/empty", async (req, reply) => {
+    const { path } = z.object({ path: z.string().min(1) }).parse(req.body);
+    return reply.send({ success: true, data: await emptyFolder(req.creds!, path) });
   });
 
   app.get("/messages", async (req, reply) => {
