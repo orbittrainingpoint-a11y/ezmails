@@ -4,7 +4,7 @@ import { randomInt } from "node:crypto";
 import { prisma } from "@ezmails/db";
 import { encrypt, decrypt, sha256 } from "../lib/crypto.js";
 
-const ISSUER = "ezmails webmail";
+const ISSUER = "Infinit Email";
 
 function recoveryCode(): string {
   const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

@@ -22,7 +22,7 @@ export async function createDomain(input: CreateDomainInput) {
   const domainName = input.domainName.trim().toLowerCase();
 
   const existing = await prisma.domain.findUnique({ where: { domainName } });
-  if (existing) throw Errors.conflict("That domain is already managed by ezmails.");
+  if (existing) throw Errors.conflict("That domain is already managed by Infinit Email.");
 
   const domain = await prisma.domain.create({
     data: {

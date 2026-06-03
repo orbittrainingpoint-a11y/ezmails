@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Mail, Calendar, Check, Download } from "lucide-react";
+import { Calendar, Check, Download } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { publicBooking, publicBook, bookingIcsUrl, WmError } from "./api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -34,8 +35,8 @@ export function BookingPage() {
     <div className="min-h-screen bg-base">
       <header className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary"><Mail className="h-5 w-5 text-white" /></div>
-          <span className="font-semibold">ezmails</span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary"><BrandLogo className="h-5 w-5 text-white" /></div>
+          <span className="font-semibold">Infinit Email</span>
         </div>
         <ThemeToggle />
       </header>

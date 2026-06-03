@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Badge } from "@/components/ui/Badge";
+import { BrandLogo } from "@/components/BrandLogo";
 import { toast } from "@/components/ui/toast";
 import { formatBytes, formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -395,8 +396,8 @@ function BrandingSection() {
       <h1 className="text-2xl font-semibold tracking-tight">Branding</h1>
       <Card><CardContent className="space-y-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary text-white">e</div>
-          <span className="text-lg font-semibold">ezmails</span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary text-white"><BrandLogo className="h-5 w-5" /></div>
+          <span className="text-lg font-semibold">Infinit Email</span>
         </div>
         <p className="text-sm text-text-secondary">Your private, self-hosted email platform. Admins can customise the workspace branding from the admin panel.</p>
       </CardContent></Card>

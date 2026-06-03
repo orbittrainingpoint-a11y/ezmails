@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { Mail } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { wmLogin, wmMfa, isMfaChallenge, WmError } from "./api";
 import { useWebmail } from "./store";
 import { Button } from "@/components/ui/Button";
@@ -54,9 +54,9 @@ export function WebmailLogin() {
       <header className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary">
-            <Mail className="h-5 w-5 text-white" />
+            <BrandLogo className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg font-semibold">ezmails webmail</span>
+          <span className="text-lg font-semibold">Infinit Email</span>
         </div>
         <ThemeToggle />
       </header>

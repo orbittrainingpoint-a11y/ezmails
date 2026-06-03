@@ -6,6 +6,10 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#g)"/>
-  <path d="M120 168c0-13 11-24 24-24h224c13 0 24 11 24 24v176c0 13-11 24-24 24H144c-13 0-24-11-24-24V168z" fill="#fff"/>
-  <path d="M132 176l124 92 124-92" fill="none" stroke="#4F8EF7" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="none" stroke="#fff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+    <!-- infinity -->
+    <path d="M256 256C256 202 128 202 128 256C128 310 256 310 256 256C256 202 384 202 384 256C384 310 256 310 256 256Z"/>
+    <!-- envelope flap -->
+    <path d="M205 239 256 288 307 239"/>
+  </g>
 </svg>

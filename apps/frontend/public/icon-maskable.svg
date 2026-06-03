@@ -6,6 +6,9 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" fill="url(#g)"/>
-  <path d="M150 196c0-11 9-20 20-20h172c11 0 20 9 20 20v140c0 11-9 20-20 20H170c-11 0-20-9-20-20V196z" fill="#fff"/>
-  <path d="M160 202l96 72 96-72" fill="none" stroke="#4F8EF7" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- mark scaled to ~72% for the maskable safe zone -->
+  <g transform="translate(256 256) scale(0.72) translate(-256 -256)" fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 256C256 202 128 202 128 256C128 310 256 310 256 256C256 202 384 202 384 256C384 310 256 310 256 256Z"/>
+    <path d="M205 239 256 288 307 239"/>
+  </g>
 </svg>

@@ -10,10 +10,10 @@ import {
   ScrollText,
   ShieldAlert,
   Settings,
-  Mail,
   LogOut,
   Menu,
 } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { useAuth, type Role } from "@/stores/auth";
 import { logout as apiLogout } from "@/features/auth/api";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -63,9 +63,9 @@ export function AppShell() {
       >
         <div className="flex h-14 items-center gap-2 border-b border-border px-4">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary">
-            <Mail className="h-4 w-4 text-white" />
+            <BrandLogo className="h-4 w-4 text-white" />
           </div>
-          <span className="font-semibold tracking-tight">ezmails</span>
+          <span className="font-semibold tracking-tight">Infinit Email</span>
         </div>
         <nav className="flex flex-col gap-1 p-3">
           {items.map((item) => (

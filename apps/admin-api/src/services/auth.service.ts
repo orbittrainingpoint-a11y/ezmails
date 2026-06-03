@@ -76,7 +76,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const link = `${env.ADMIN_PANEL_URL}/reset-password?token=${raw}`;
   await sendSystemMail({
     to: user.email,
-    subject: "Reset your ezmails password",
+    subject: "Reset your Infinit Email password",
     text: `Use this link within 1 hour to reset your password:\n\n${link}\n\nIf you didn't request this, ignore this email.`,
     html: `<p>Use this link within 1 hour to reset your password:</p><p><a href="${link}">${link}</a></p><p>If you didn't request this, ignore this email.</p>`,
   }).catch(() => {

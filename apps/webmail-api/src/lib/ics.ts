@@ -12,7 +12,7 @@ export function buildIcs(event: {
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//ezmails//Titan Bookings//EN",
+    "PRODID:-//Infinit Email//Bookings//EN",
     "METHOD:REQUEST",
     "BEGIN:VEVENT",
     `UID:${event.uid}`,

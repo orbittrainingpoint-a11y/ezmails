@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Mail } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function AuthLayout({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
@@ -8,9 +8,9 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
       <header className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary">
-            <Mail className="h-5 w-5 text-white" />
+            <BrandLogo className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg font-semibold tracking-tight">ezmails</span>
+          <span className="text-lg font-semibold tracking-tight">Infinit Email</span>
         </div>
         <ThemeToggle />
       </header>

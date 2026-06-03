@@ -41,7 +41,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title="Welcome back" subtitle="Sign in to your ezmails control panel">
+    <AuthLayout title="Welcome back" subtitle="Sign in to your Infinit Email control panel">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {error && <Alert tone="danger">{error}</Alert>}
         <div>

@@ -1,6 +1,6 @@
 {
-  "name": "ezmails Webmail",
-  "short_name": "ezmails",
+  "name": "Infinit Email",
+  "short_name": "Infinit",
   "description": "Secure self-hosted webmail — read, write, and organize your email.",
   "start_url": "/webmail",
   "scope": "/",

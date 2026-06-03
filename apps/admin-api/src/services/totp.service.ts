@@ -3,7 +3,7 @@ import QRCode from "qrcode";
 import { prisma } from "@ezmails/db";
 import { encryptSecret, decryptSecret, recoveryCode, sha256hex } from "../lib/crypto.js";
 
-const ISSUER = "ezmails";
+const ISSUER = "Infinit Email";
 
 /**
  * AUTH-002/003: begin TOTP enrollment. Generates a secret (encrypted at rest),
