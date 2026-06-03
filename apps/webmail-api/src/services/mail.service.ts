@@ -291,6 +291,48 @@ export async function send(
   return { messageId: result.messageId };
 }
 
+/**
+ * Stream the entire account as a standard mbox file (every folder, every message).
+ * Importable into Thunderbird/Apple Mail/another server. Writes to `out` and ends it.
+ */
+export async function exportMbox(creds: WebmailCreds, out: NodeJS.WritableStream) {
+  const writeMsg = (raw: Buffer, when: Date) => {
+    out.write(`From MAILER-DAEMON ${when.toUTCString()}\n`);
+    // mbox "From " line escaping so message bodies can't be mistaken for separators.
+    const escaped = raw.toString("latin1").replace(/\nFrom /g, "\n>From ");
+    out.write(Buffer.from(escaped, "latin1"));
+    out.write("\n\n");
+  };
+
+  if (DEV) {
+    // Dev store has no raw RFC822 source to export; production uses real IMAP below.
+    out.end();
+    return;
+  }
+
+  await withImap(creds, async (c) => {
+    const boxes = await c.list();
+    for (const b of boxes) {
+      let lock;
+      try {
+        lock = await c.getMailboxLock(b.path);
+      } catch {
+        continue; // unselectable folder
+      }
+      try {
+        const status = c.mailbox && typeof c.mailbox === "object" ? c.mailbox : null;
+        if (!status || status.exists === 0) continue;
+        for await (const msg of c.fetch("1:*", { uid: true, source: true, envelope: true })) {
+          if (msg.source) writeMsg(msg.source, msg.envelope?.date ?? new Date());
+        }
+      } finally {
+        lock.release();
+      }
+    }
+  });
+  out.end();
+}
+
 /** Save an unsent message to the Drafts folder. */
 export async function saveDraft(
   creds: WebmailCreds,

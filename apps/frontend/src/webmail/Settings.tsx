@@ -27,7 +27,7 @@ import { formatBytes, formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 type SectionId =
-  | "account" | "notifications" | "security" | "apppasswords" | "ai"
+  | "account" | "notifications" | "security" | "apppasswords" | "backup" | "ai"
   | "rules" | "priority" | "blocked"
   | "signature" | "grammar" | "vacation" | "forwarding" | "import" | "importmail"
   | "branding";
@@ -38,6 +38,7 @@ const GROUPS: { label: string; items: { id: SectionId; label: string; icon: type
     { id: "notifications", label: "Notifications", icon: Bell },
     { id: "security", label: "Security (2FA)", icon: ShieldCheck },
     { id: "apppasswords", label: "App Passwords", icon: KeyRound },
+    { id: "backup", label: "Email Backup", icon: Download },
     { id: "ai", label: "AI Assistant", icon: Sparkles },
   ] },
   { label: "Inbox & Organization", items: [
@@ -100,6 +101,7 @@ export function Settings() {
           {active === "notifications" && <NotificationsSection />}
           {active === "security" && <TwoFactor />}
           {active === "apppasswords" && <AppPasswordsSection />}
+          {active === "backup" && <BackupSection />}
           {active === "ai" && <AISection />}
           {active === "rules" && <div className="-m-6"><Rules /></div>}
           {active === "priority" && <PrioritySection />}
@@ -329,6 +331,24 @@ function PrioritySection() {
             ))}
           </div>
         </div>
+      </CardContent></Card>
+    </div>
+  );
+}
+
+function BackupSection() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Email Backup</h1>
+        <p className="mt-1 text-sm text-text-secondary">Download a complete copy of your mailbox as a standard <code className="rounded bg-elevated px-1">.mbox</code> file — every folder and message. You can import it into Thunderbird, Apple Mail, or another mail server.</p>
+      </div>
+      <Card><CardContent className="space-y-3 pt-6">
+        <a href="/webmail-api/backup/export" download
+          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+          <Download className="h-4 w-4" /> Export all email (.mbox)
+        </a>
+        <p className="text-xs text-text-secondary">Large mailboxes may take a little while — keep this tab open until the download starts.</p>
       </CardContent></Card>
     </div>
   );

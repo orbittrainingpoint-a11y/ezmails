@@ -15,7 +15,9 @@ import {
   trashMessage,
   send,
   saveDraft,
+  exportMbox,
 } from "../services/mail.service.js";
+import { PassThrough } from "node:stream";
 import { recordUse } from "../services/contact.service.js";
 import { schedule, listScheduled, cancel, flushDue } from "../services/scheduled.service.js";
 
@@ -115,6 +117,19 @@ export default async function mailRoutes(app: FastifyInstance) {
     const result = await send(req.creds!, { ...body, attachments });
     await recordUse(req.creds!.mailboxId, body.to);
     return reply.send({ success: true, data: result });
+  });
+
+  // Full mailbox export as a downloadable .mbox file.
+  app.get("/backup/export", async (req, reply) => {
+    const stream = new PassThrough();
+    const stamp = new Date().toISOString().slice(0, 10);
+    reply
+      .header("content-type", "application/mbox")
+      .header("content-disposition", `attachment; filename="ezmail-backup-${stamp}.mbox"`)
+      .header("cache-control", "no-store");
+    // Run the export in the background, piping into the response as it goes.
+    exportMbox(req.creds!, stream).catch(() => stream.destroy());
+    return reply.send(stream);
   });
 
   app.post("/messages/draft", async (req, reply) => {
