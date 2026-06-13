@@ -1,0 +1,36 @@
+# ezmails fail2ban jails. Copy to /etc/fail2ban/jail.local on the host.
+# SSH works out of the box (host auth.log). The mail jails are commented out —
+# enable them only after exposing the containers' logs to the host (see comments).
+
+[DEFAULT]
+# Ban for 1 hour after 5 failures within 10 minutes; ignore your own networks.
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+ignoreip = 127.0.0.1/8 ::1
+backend  = auto
+
+[sshd]
+enabled  = true
+port     = ssh
+maxretry = 4
+bantime  = 2h
+
+# ── Mail stack (optional) ──
+# The Postfix/Dovecot containers log to stdout (and Postfix also to
+# /var/log/postfix.log inside its container). To let fail2ban see them, bind-mount
+# those logs to the host, e.g. add to docker-compose:
+#   postfix: volumes: ["./logs/postfix.log:/var/log/postfix.log"]
+# then point logpath below at the host file and set enabled = true.
+#
+# [postfix-sasl]
+# enabled  = true
+# filter   = postfix[mode=auth]
+# logpath  = /var/www/html/ezmails/logs/postfix.log
+# maxretry = 4
+#
+# [dovecot]
+# enabled  = true
+# filter   = dovecot
+# logpath  = /var/www/html/ezmails/logs/dovecot.log
+# maxretry = 5
