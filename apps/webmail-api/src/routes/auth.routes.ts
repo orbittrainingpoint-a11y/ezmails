@@ -7,7 +7,8 @@ import { createSession, destroySession } from "../lib/session.js";
 import { redis } from "../lib/redis.js";
 import { encrypt, decrypt, randomToken, sha256 } from "../lib/crypto.js";
 import { env } from "../config/env.js";
-import { Errors } from "../lib/errors.js";
+import { Errors, AppError } from "../lib/errors.js";
+import { hitLimit, isLockedOut, recordFailure, clearFailures } from "../lib/ratelimit.js";
 import { WEBMAIL_COOKIE } from "../plugins/auth.js";
 import { isTotpEnabled, verifyLoginCode, setupTotp, verifyAndEnable, disableTotp } from "../services/totp.service.js";
 
@@ -33,10 +34,23 @@ async function issueSession(reply: import("fastify").FastifyReply, mailbox: { id
 export default async function authRoutes(app: FastifyInstance) {
   app.post("/auth/login", async (req, reply) => {
     const { email, password } = loginSchema.parse(req.body);
+    const emailKey = email.toLowerCase();
 
-    const mailbox = await prisma.mailbox.findUnique({ where: { email: email.toLowerCase() } });
-    if (!mailbox || mailbox.status !== "active") throw Errors.invalidCredentials();
-    if (!(await verifyPassword(mailbox, email, password))) throw Errors.invalidCredentials();
+    // Per-IP flood protection (covers credential stuffing across many accounts).
+    const ipLimit = await hitLimit(`login:ip:${req.ip}`, 30, 300);
+    if (!ipLimit.ok) throw new AppError(429, "RATE_LIMITED", `Too many attempts. Try again in ${Math.ceil(ipLimit.retryAfter / 60)} min.`);
+
+    // Per-account lockout after repeated wrong passwords.
+    const lock = await isLockedOut(`login:${emailKey}`, 6);
+    if (lock.locked) throw new AppError(429, "ACCOUNT_LOCKED", `Too many failed sign-ins for this account. Try again in ${Math.ceil(lock.retryAfter / 60)} min.`);
+
+    const mailbox = await prisma.mailbox.findUnique({ where: { email: emailKey } });
+    const valid = !!mailbox && mailbox.status === "active" && (await verifyPassword(mailbox, email, password));
+    if (!mailbox || !valid) {
+      await recordFailure(`login:${emailKey}`, 900); // 15-min lock window
+      throw Errors.invalidCredentials();
+    }
+    await clearFailures(`login:${emailKey}`);
 
     // Webmail 2FA gate (Google Authenticator).
     if (await isTotpEnabled(mailbox.id)) {
@@ -50,11 +64,22 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.post("/auth/mfa", async (req, reply) => {
     const { mfaToken, code } = z.object({ mfaToken: z.string(), code: z.string().min(6) }).parse(req.body);
+    const ipLimit = await hitLimit(`mfa:ip:${req.ip}`, 30, 300);
+    if (!ipLimit.ok) throw new AppError(429, "RATE_LIMITED", "Too many attempts. Try again later.");
+
     const raw = await redis.get(mfaKey(mfaToken));
     if (!raw) throw Errors.unauthorized("MFA challenge expired. Please sign in again.");
     const { mailboxId, email, p } = JSON.parse(raw) as { mailboxId: string; email: string; p: string };
 
-    if (!(await verifyLoginCode(mailboxId, code))) throw Errors.invalidCredentials();
+    if (!(await verifyLoginCode(mailboxId, code))) {
+      // Invalidate the challenge after too many wrong codes (anti brute-force).
+      await recordFailure(`mfa:${mfaToken}`, 300);
+      if ((await isLockedOut(`mfa:${mfaToken}`, 5)).locked) {
+        await redis.del(mfaKey(mfaToken));
+        throw Errors.unauthorized("Too many incorrect codes. Please sign in again.");
+      }
+      throw Errors.invalidCredentials();
+    }
     await redis.del(mfaKey(mfaToken));
 
     const mailbox = await prisma.mailbox.findUniqueOrThrow({ where: { id: mailboxId } });
