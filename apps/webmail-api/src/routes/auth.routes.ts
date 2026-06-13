@@ -11,6 +11,9 @@ import { Errors, AppError } from "../lib/errors.js";
 import { hitLimit, isLockedOut, recordFailure, clearFailures } from "../lib/ratelimit.js";
 import { WEBMAIL_COOKIE } from "../plugins/auth.js";
 import { isTotpEnabled, verifyLoginCode, setupTotp, verifyAndEnable, disableTotp } from "../services/totp.service.js";
+import { genOtp, getRecoveryEmail, setRecoveryEmail, isEmailOtpEnabled, setEmailOtpEnabled, sendOtpEmail, maskEmail } from "../services/mfa.service.js";
+
+const otpSetupKey = (mailboxId: string) => `webmail:emailotp:setup:${mailboxId}`;
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 const mfaKey = (token: string) => `webmail:mfa:${sha256(token)}`;
@@ -52,11 +55,24 @@ export default async function authRoutes(app: FastifyInstance) {
     }
     await clearFailures(`login:${emailKey}`);
 
-    // Webmail 2FA gate (Google Authenticator).
-    if (await isTotpEnabled(mailbox.id)) {
+    // Webmail 2FA gate — authenticator (TOTP) or a one-time code emailed to the recovery address.
+    const totp = await isTotpEnabled(mailbox.id);
+    const emailOtp = !totp && (await isEmailOtpEnabled(mailbox.id));
+    if (totp || emailOtp) {
+      const method = totp ? "totp" : "email";
       const mfaToken = randomToken(24);
-      await redis.set(mfaKey(mfaToken), JSON.stringify({ mailboxId: mailbox.id, email: email.toLowerCase(), p: encrypt(password) }), "EX", 300);
-      return reply.send({ success: true, data: { mfaRequired: true, mfaToken } });
+      let otp: string | undefined;
+      let hint: string | undefined;
+      if (method === "email") {
+        const rec = await getRecoveryEmail(mailbox.id);
+        if (rec) {
+          otp = genOtp();
+          hint = maskEmail(rec);
+          await sendOtpEmail(rec, otp).catch(() => {});
+        }
+      }
+      await redis.set(mfaKey(mfaToken), JSON.stringify({ mailboxId: mailbox.id, email: emailKey, p: encrypt(password), method, otp }), "EX", 300);
+      return reply.send({ success: true, data: { mfaRequired: true, mfaToken, method, hint } });
     }
 
     return reply.send({ success: true, data: await issueSession(reply, mailbox, email, password) });
@@ -69,9 +85,10 @@ export default async function authRoutes(app: FastifyInstance) {
 
     const raw = await redis.get(mfaKey(mfaToken));
     if (!raw) throw Errors.unauthorized("MFA challenge expired. Please sign in again.");
-    const { mailboxId, email, p } = JSON.parse(raw) as { mailboxId: string; email: string; p: string };
+    const { mailboxId, email, p, method, otp } = JSON.parse(raw) as { mailboxId: string; email: string; p: string; method?: string; otp?: string };
 
-    if (!(await verifyLoginCode(mailboxId, code))) {
+    const ok = method === "email" ? !!otp && code.trim() === otp : await verifyLoginCode(mailboxId, code);
+    if (!ok) {
       // Invalidate the challenge after too many wrong codes (anti brute-force).
       await recordFailure(`mfa:${mfaToken}`, 300);
       if ((await isLockedOut(`mfa:${mfaToken}`, 5)).locked) {
@@ -96,7 +113,9 @@ export default async function authRoutes(app: FastifyInstance) {
   app.get("/auth/me", { preHandler: [app.authenticate] }, async (req, reply) => {
     const mailbox = await prisma.mailbox.findUnique({ where: { id: req.creds!.mailboxId }, select: { email: true, displayName: true } });
     const totpEnabled = await isTotpEnabled(req.creds!.mailboxId);
-    return reply.send({ success: true, data: { ...mailbox, totpEnabled } });
+    const emailOtpEnabled = await isEmailOtpEnabled(req.creds!.mailboxId);
+    const recoveryEmail = await getRecoveryEmail(req.creds!.mailboxId);
+    return reply.send({ success: true, data: { ...mailbox, totpEnabled, emailOtpEnabled, recoveryEmail } });
   });
 
   // ── 2FA management (authenticated) ──
@@ -113,5 +132,43 @@ export default async function authRoutes(app: FastifyInstance) {
   app.post("/auth/2fa/disable", { preHandler: [app.authenticate] }, async (req, reply) => {
     await disableTotp(req.creds!.mailboxId);
     return reply.send({ success: true, data: { totpEnabled: false } });
+  });
+
+  // ── Recovery email ──
+  app.post("/auth/recovery-email", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    if (email.toLowerCase() === req.creds!.email.toLowerCase()) {
+      throw new AppError(400, "INVALID_RECOVERY", "Use a different address than your own mailbox.");
+    }
+    await setRecoveryEmail(req.creds!.mailboxId, email);
+    return reply.send({ success: true, data: { recoveryEmail: email.toLowerCase() } });
+  });
+
+  // ── Email-OTP 2FA (alternative to the authenticator app) ──
+  app.post("/auth/2fa/email/setup", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const rec = await getRecoveryEmail(req.creds!.mailboxId);
+    if (!rec) throw new AppError(400, "NO_RECOVERY_EMAIL", "Add a recovery email first.");
+    const code = genOtp();
+    await redis.set(otpSetupKey(req.creds!.mailboxId), code, "EX", 300);
+    try {
+      await sendOtpEmail(rec, code);
+    } catch {
+      throw new AppError(502, "SEND_FAILED", "Could not send the verification email — check the mail server is running.");
+    }
+    return reply.send({ success: true, data: { sent: true, hint: maskEmail(rec) } });
+  });
+
+  app.post("/auth/2fa/email/verify", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { code } = z.object({ code: z.string().min(6) }).parse(req.body);
+    const stored = await redis.get(otpSetupKey(req.creds!.mailboxId));
+    if (!stored || stored !== code.trim()) throw Errors.invalidCredentials();
+    await redis.del(otpSetupKey(req.creds!.mailboxId));
+    await setEmailOtpEnabled(req.creds!.mailboxId, true);
+    return reply.send({ success: true, data: { emailOtpEnabled: true } });
+  });
+
+  app.post("/auth/2fa/email/disable", { preHandler: [app.authenticate] }, async (req, reply) => {
+    await setEmailOtpEnabled(req.creds!.mailboxId, false);
+    return reply.send({ success: true, data: { emailOtpEnabled: false } });
   });
 }

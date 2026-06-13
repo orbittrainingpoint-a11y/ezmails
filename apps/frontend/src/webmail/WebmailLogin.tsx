@@ -15,6 +15,8 @@ export function WebmailLogin() {
   const setProfile = useWebmail((s) => s.setProfile);
   const [error, setError] = useState<string | null>(null);
   const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaMethod, setMfaMethod] = useState<"totp" | "email">("totp");
+  const [mfaHint, setMfaHint] = useState<string | undefined>(undefined);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const { register, handleSubmit, formState } = useForm<{ email: string; password: string }>();
@@ -25,6 +27,8 @@ export function WebmailLogin() {
       const res = await wmLogin(v.email, v.password);
       if (isMfaChallenge(res)) {
         setMfaToken(res.mfaToken);
+        setMfaMethod(res.method ?? "totp");
+        setMfaHint(res.hint);
         return;
       }
       setProfile(res.profile);
@@ -68,12 +72,16 @@ export function WebmailLogin() {
           {mfaToken ? (
             <div className="space-y-4">
               {error && <Alert tone="danger">{error}</Alert>}
-              <p className="text-sm text-text-secondary">Enter the 6-digit code from Google Authenticator.</p>
+              <p className="text-sm text-text-secondary">
+                {mfaMethod === "email"
+                  ? `Enter the 6-digit code we emailed to ${mfaHint ?? "your recovery email"}.`
+                  : "Enter the 6-digit code from your authenticator app."}
+              </p>
               <Input
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 autoFocus
-                placeholder="123456 or recovery code"
+                placeholder={mfaMethod === "email" ? "123456" : "123456 or recovery code"}
                 className="text-center font-mono tracking-widest"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -86,11 +94,11 @@ export function WebmailLogin() {
               {error && <Alert tone="danger">{error}</Alert>}
               <div>
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" autoFocus {...register("email", { required: true })} />
+                <Input id="email" type="email" autoComplete="username" autoFocus {...register("email", { required: true })} />
               </div>
               <div>
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" {...register("password", { required: true })} />
+                <Input id="password" type="password" autoComplete="current-password" {...register("password", { required: true })} />
               </div>
               <Button type="submit" className="w-full" loading={formState.isSubmitting}>
                 Sign in

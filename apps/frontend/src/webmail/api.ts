@@ -76,20 +76,26 @@ export interface WmSettings {
 // ── Calls ──
 export type LoginResult =
   | { token: string; profile: { email: string; displayName: string | null } }
-  | { mfaRequired: true; mfaToken: string };
-export const isMfaChallenge = (r: LoginResult): r is { mfaRequired: true; mfaToken: string } =>
+  | { mfaRequired: true; mfaToken: string; method?: "totp" | "email"; hint?: string };
+export const isMfaChallenge = (r: LoginResult): r is { mfaRequired: true; mfaToken: string; method?: "totp" | "email"; hint?: string } =>
   (r as { mfaRequired?: boolean }).mfaRequired === true;
 export const wmLogin = (email: string, password: string) =>
   wm<LoginResult>("/auth/login", { method: "POST", body: { email, password } });
 export const wmMfa = (mfaToken: string, code: string) =>
   wm<{ token: string; profile: { email: string; displayName: string | null } }>("/auth/mfa", { method: "POST", body: { mfaToken, code } });
-export const wmMe = () => wm<{ email: string; displayName: string | null; totpEnabled?: boolean }>("/auth/me");
+export const wmMe = () => wm<{ email: string; displayName: string | null; totpEnabled?: boolean; emailOtpEnabled?: boolean; recoveryEmail?: string | null }>("/auth/me");
 export const wmLogout = () => wm("/auth/logout", { method: "POST" });
 
 // 2FA management
 export const wm2faSetup = () => wm<{ otpauth: string; qrDataUrl: string; recoveryCodes: string[] }>("/auth/2fa/setup", { method: "POST" });
 export const wm2faVerify = (code: string) => wm<{ totpEnabled: boolean }>("/auth/2fa/verify", { method: "POST", body: { code } });
 export const wm2faDisable = () => wm("/auth/2fa/disable", { method: "POST" });
+
+// Recovery email + email-OTP 2FA
+export const wmSetRecoveryEmail = (email: string) => wm<{ recoveryEmail: string }>("/auth/recovery-email", { method: "POST", body: { email } });
+export const wmEmail2faSetup = () => wm<{ sent: boolean; hint: string }>("/auth/2fa/email/setup", { method: "POST" });
+export const wmEmail2faVerify = (code: string) => wm<{ emailOtpEnabled: boolean }>("/auth/2fa/email/verify", { method: "POST", body: { code } });
+export const wmEmail2faDisable = () => wm("/auth/2fa/email/disable", { method: "POST" });
 
 // App passwords (configure this mailbox in external IMAP/SMTP clients)
 export interface AppPassword { id: string; label: string; lastUsedAt: string | null; createdAt: string }

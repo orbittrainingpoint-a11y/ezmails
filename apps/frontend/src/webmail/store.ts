@@ -4,6 +4,8 @@ interface WmProfile {
   email: string;
   displayName: string | null;
   totpEnabled?: boolean;
+  emailOtpEnabled?: boolean;
+  recoveryEmail?: string | null;
 }
 
 interface WmState {
