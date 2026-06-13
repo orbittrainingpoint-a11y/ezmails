@@ -5,6 +5,7 @@ import { useBootstrapAuth } from "@/features/auth/useBootstrapAuth";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { RoleGate, IndexRedirect } from "./RoleGate";
 import { Toaster } from "@/components/ui/toast";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { MfaPage } from "@/features/auth/MfaPage";
 import { ForgotPasswordPage } from "@/features/auth/ForgotPasswordPage";
@@ -125,6 +126,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <Root />
       <Toaster />
+      <InstallPrompt />
     </QueryClientProvider>
   );
 }
