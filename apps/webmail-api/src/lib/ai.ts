@@ -41,8 +41,14 @@ async function openaiGenerate(opts: GenerateOptions): Promise<string> {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
+    if (res.status === 401 || res.status === 403) {
+      throw new AppError(502, "AI_AUTH", `The AI provider rejected the API key (HTTP ${res.status}). Check AI_API_KEY / AI_BASE_URL in your .env, then recreate the webmail-api container.`, detail.slice(0, 500));
+    }
+    if (res.status === 404) {
+      throw new AppError(502, "AI_MODEL", `The AI model "${env.AI_MODEL}" was not found (HTTP 404). Set AI_MODEL to a model your provider offers.`, detail.slice(0, 500));
+    }
     const code = res.status === 429 ? "AI_RATE_LIMITED" : "AI_UPSTREAM";
-    const msg = res.status === 429 ? "AI is busy (rate limit) — try again in a moment." : `AI request failed (${res.status}).`;
+    const msg = res.status === 429 ? "AI is busy (rate limit) — try again in a moment." : `AI request failed (HTTP ${res.status}).`;
     throw new AppError(res.status === 429 ? 429 : 502, code, msg, detail.slice(0, 500));
   }
   const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
