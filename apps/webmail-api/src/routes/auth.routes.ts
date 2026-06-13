@@ -3,7 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@ezmails/db";
 import { verifyImapLogin } from "../lib/imap.js";
-import { createSession, destroySession } from "../lib/session.js";
+import { createSession, destroySession, hashToken, listSessions, revokeSession, revokeOtherSessions } from "../lib/session.js";
 import { redis } from "../lib/redis.js";
 import { encrypt, decrypt, randomToken, sha256 } from "../lib/crypto.js";
 import { env } from "../config/env.js";
@@ -27,11 +27,17 @@ async function verifyPassword(mailbox: { password: string }, email: string, pass
   return verifyImapLogin(email, password);
 }
 
-async function issueSession(reply: import("fastify").FastifyReply, mailbox: { id: string; email: string; displayName: string | null }, email: string, password: string) {
+async function issueSession(req: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply, mailbox: { id: string; email: string; displayName: string | null }, email: string, password: string) {
   await prisma.mailbox.update({ where: { id: mailbox.id }, data: { lastLoginAt: new Date() } }).catch(() => {});
-  const token = await createSession(mailbox.id, email.toLowerCase(), password);
+  const token = await createSession(mailbox.id, email.toLowerCase(), password, { ip: req.ip, ua: req.headers["user-agent"] });
   reply.setCookie(WEBMAIL_COOKIE, token, { httpOnly: true, secure: SECURE_COOKIE, sameSite: "lax", path: "/" });
   return { token, profile: { email: mailbox.email, displayName: mailbox.displayName } };
+}
+
+/** Hash of the token authenticating this request — identifies the current session. */
+function currentSessionHash(req: import("fastify").FastifyRequest): string {
+  const token = req.cookies?.[WEBMAIL_COOKIE] ?? req.headers.authorization?.replace(/^Bearer\s+/i, "");
+  return token ? hashToken(token) : "";
 }
 
 export default async function authRoutes(app: FastifyInstance) {
@@ -75,7 +81,7 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.send({ success: true, data: { mfaRequired: true, mfaToken, method, hint } });
     }
 
-    return reply.send({ success: true, data: await issueSession(reply, mailbox, email, password) });
+    return reply.send({ success: true, data: await issueSession(req, reply, mailbox, email, password) });
   });
 
   app.post("/auth/mfa", async (req, reply) => {
@@ -100,7 +106,7 @@ export default async function authRoutes(app: FastifyInstance) {
     await redis.del(mfaKey(mfaToken));
 
     const mailbox = await prisma.mailbox.findUniqueOrThrow({ where: { id: mailboxId } });
-    return reply.send({ success: true, data: await issueSession(reply, mailbox, email, decrypt(p)) });
+    return reply.send({ success: true, data: await issueSession(req, reply, mailbox, email, decrypt(p)) });
   });
 
   app.post("/auth/logout", async (req, reply) => {
@@ -133,6 +139,18 @@ export default async function authRoutes(app: FastifyInstance) {
     await disableTotp(req.creds!.mailboxId);
     return reply.send({ success: true, data: { totpEnabled: false } });
   });
+
+  // ── Active sessions (devices) ──
+  app.get("/auth/sessions", { preHandler: [app.authenticate] }, async (req, reply) =>
+    reply.send({ success: true, data: await listSessions(req.creds!.mailboxId, currentSessionHash(req)) }));
+
+  app.post("/auth/sessions/:id/revoke", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = z.object({ id: z.string().min(1) }).parse(req.params);
+    return reply.send({ success: true, data: await revokeSession(req.creds!.mailboxId, id) });
+  });
+
+  app.post("/auth/sessions/revoke-others", { preHandler: [app.authenticate] }, async (req, reply) =>
+    reply.send({ success: true, data: await revokeOtherSessions(req.creds!.mailboxId, currentSessionHash(req)) }));
 
   // ── Recovery email ──
   app.post("/auth/recovery-email", { preHandler: [app.authenticate] }, async (req, reply) => {

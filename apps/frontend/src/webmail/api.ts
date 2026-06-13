@@ -97,6 +97,12 @@ export const wmEmail2faSetup = () => wm<{ sent: boolean; hint: string }>("/auth/
 export const wmEmail2faVerify = (code: string) => wm<{ emailOtpEnabled: boolean }>("/auth/2fa/email/verify", { method: "POST", body: { code } });
 export const wmEmail2faDisable = () => wm("/auth/2fa/email/disable", { method: "POST" });
 
+// Active sessions (devices)
+export interface WmSession { id: string; ip: string | null; ua: string | null; createdAt: string; lastSeenAt: string; current: boolean }
+export const wmSessions = () => wm<WmSession[]>("/auth/sessions");
+export const wmRevokeSession = (id: string) => wm(`/auth/sessions/${id}/revoke`, { method: "POST" });
+export const wmRevokeOtherSessions = () => wm<{ revoked: number }>("/auth/sessions/revoke-others", { method: "POST" });
+
 // App passwords (configure this mailbox in external IMAP/SMTP clients)
 export interface AppPassword { id: string; label: string; lastUsedAt: string | null; createdAt: string }
 export const wmAppPasswords = () => wm<AppPassword[]>("/app-passwords");

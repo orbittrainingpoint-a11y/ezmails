@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { ShieldCheck, Smartphone, Mail, KeyRound } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ShieldCheck, Smartphone, Mail, KeyRound, Monitor, LogOut } from "lucide-react";
 import {
   wm2faSetup, wm2faVerify, wm2faDisable,
   wmSetRecoveryEmail, wmEmail2faSetup, wmEmail2faVerify, wmEmail2faDisable,
+  wmSessions, wmRevokeSession, wmRevokeOtherSessions, type WmSession,
   WmError,
 } from "./api";
 import { useWebmail } from "./store";
@@ -29,7 +30,64 @@ export function TwoFactor() {
       <RecoveryEmailCard current={recoveryEmail} onSaved={(e) => patch({ recoveryEmail: e })} />
       <AuthenticatorCard enabled={!!totpEnabled} onChange={(v) => patch({ totpEnabled: v })} />
       <EmailOtpCard enabled={!!emailOtpEnabled} hasRecovery={!!recoveryEmail} onChange={(v) => patch({ emailOtpEnabled: v })} />
+      <SessionsCard />
     </div>
+  );
+}
+
+/** Friendly "Chrome on Windows" label from a raw User-Agent string. */
+function deviceLabel(ua: string | null): string {
+  if (!ua) return "Unknown device";
+  const browser =
+    /edg/i.test(ua) ? "Edge" : /chrome|crios/i.test(ua) ? "Chrome" : /firefox|fxios/i.test(ua) ? "Firefox" :
+    /safari/i.test(ua) ? "Safari" : "Browser";
+  const os =
+    /windows/i.test(ua) ? "Windows" : /android/i.test(ua) ? "Android" : /iphone|ipad|ios/i.test(ua) ? "iOS" :
+    /mac os|macintosh/i.test(ua) ? "macOS" : /linux/i.test(ua) ? "Linux" : "";
+  return os ? `${browser} on ${os}` : browser;
+}
+
+function SessionsCard() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["wm", "sessions"], queryFn: wmSessions });
+  const revoke = useMutation({
+    mutationFn: (id: string) => wmRevokeSession(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["wm", "sessions"] }); toast.success("Session signed out."); },
+  });
+  const revokeOthers = useMutation({
+    mutationFn: wmRevokeOtherSessions,
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["wm", "sessions"] }); toast.success(`Signed out ${r.revoked} other session${r.revoked === 1 ? "" : "s"}.`); },
+  });
+  const fmt = (iso: string) => new Date(iso).toLocaleString();
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Monitor className="h-4 w-4" /> Active sessions</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-text-secondary">Devices currently signed in to your mailbox. If you see something you don't recognise, sign it out and change your password.</p>
+        {isLoading ? <p className="text-sm text-text-secondary">Loading…</p> : (
+          <ul className="divide-y divide-border">
+            {(data ?? []).map((s: WmSession) => (
+              <li key={s.id} className="flex items-center justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    {deviceLabel(s.ua)}
+                    {s.current && <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">This device</span>}
+                  </div>
+                  <div className="truncate text-xs text-text-secondary">{s.ip ?? "unknown IP"} · last active {fmt(s.lastSeenAt)}</div>
+                </div>
+                {!s.current && (
+                  <Button variant="ghost" size="sm" className="text-danger" onClick={() => revoke.mutate(s.id)} loading={revoke.isPending && revoke.variables === s.id}>Sign out</Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {(data?.length ?? 0) > 1 && (
+          <Button variant="outline" onClick={() => revokeOthers.mutate()} loading={revokeOthers.isPending}><LogOut className="h-4 w-4" /> Sign out all other sessions</Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
