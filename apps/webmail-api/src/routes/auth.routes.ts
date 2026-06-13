@@ -68,9 +68,11 @@ export default async function authRoutes(app: FastifyInstance) {
     await clearFailures(`login:${emailKey}`);
 
     // Webmail 2FA gate — passkey (WebAuthn), authenticator (TOTP), or an emailed code.
-    const passkey = await hasPasskeys(mailbox.id);
-    const totp = await isTotpEnabled(mailbox.id);
-    const emailOtp = await isEmailOtpEnabled(mailbox.id);
+    // These tolerate failures (e.g. a not-yet-migrated table) by degrading to "no 2FA"
+    // rather than 500-ing the login for everyone.
+    const passkey = await hasPasskeys(mailbox.id).catch(() => false);
+    const totp = await isTotpEnabled(mailbox.id).catch(() => false);
+    const emailOtp = await isEmailOtpEnabled(mailbox.id).catch(() => false);
     if (passkey || totp || emailOtp) {
       const methods: string[] = [];
       if (passkey) methods.push("passkey");
