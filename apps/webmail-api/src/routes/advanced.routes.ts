@@ -4,6 +4,7 @@ import { prisma, type Prisma } from "@ezmails/db";
 import { getAccount, updateDisplayName, changePassword } from "../services/account.service.js";
 import { listTrackers } from "../services/tracking.service.js";
 import { runAutoClean, type AutoCleanRule } from "../services/autoclean.service.js";
+import { recordEvent } from "../services/security.service.js";
 
 /** Advanced webmail settings: account, forwarding, blocked senders. */
 export default async function advancedRoutes(app: FastifyInstance) {
@@ -19,7 +20,9 @@ export default async function advancedRoutes(app: FastifyInstance) {
 
   app.post("/account/password", async (req, reply) => {
     const { current, next } = z.object({ current: z.string().min(1), next: z.string().min(8) }).parse(req.body);
-    return reply.send({ success: true, data: await changePassword(req.creds!.mailboxId, current, next) });
+    const result = await changePassword(req.creds!.mailboxId, current, next);
+    await recordEvent(req.creds!.mailboxId, "password_changed", { ip: req.ip });
+    return reply.send({ success: true, data: result });
   });
 
   // ── Forwarding (per-mailbox) ──

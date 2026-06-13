@@ -103,6 +103,10 @@ export const wmSessions = () => wm<WmSession[]>("/auth/sessions");
 export const wmRevokeSession = (id: string) => wm(`/auth/sessions/${id}/revoke`, { method: "POST" });
 export const wmRevokeOtherSessions = () => wm<{ revoked: number }>("/auth/sessions/revoke-others", { method: "POST" });
 
+// Security activity log
+export interface SecurityEvent { ts: string; type: string; ip?: string; ua?: string; detail?: string }
+export const wmSecurityLog = () => wm<SecurityEvent[]>("/auth/security-log");
+
 // App passwords (configure this mailbox in external IMAP/SMTP clients)
 export interface AppPassword { id: string; label: string; lastUsedAt: string | null; createdAt: string }
 export const wmAppPasswords = () => wm<AppPassword[]>("/app-passwords");

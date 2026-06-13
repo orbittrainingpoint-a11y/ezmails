@@ -12,6 +12,7 @@ import { hitLimit, isLockedOut, recordFailure, clearFailures } from "../lib/rate
 import { WEBMAIL_COOKIE } from "../plugins/auth.js";
 import { isTotpEnabled, verifyLoginCode, setupTotp, verifyAndEnable, disableTotp } from "../services/totp.service.js";
 import { genOtp, getRecoveryEmail, setRecoveryEmail, isEmailOtpEnabled, setEmailOtpEnabled, sendOtpEmail, maskEmail } from "../services/mfa.service.js";
+import { onLogin, recordEvent, listEvents } from "../services/security.service.js";
 
 const otpSetupKey = (mailboxId: string) => `webmail:emailotp:setup:${mailboxId}`;
 
@@ -31,6 +32,7 @@ async function issueSession(req: import("fastify").FastifyRequest, reply: import
   await prisma.mailbox.update({ where: { id: mailbox.id }, data: { lastLoginAt: new Date() } }).catch(() => {});
   const token = await createSession(mailbox.id, email.toLowerCase(), password, { ip: req.ip, ua: req.headers["user-agent"] });
   reply.setCookie(WEBMAIL_COOKIE, token, { httpOnly: true, secure: SECURE_COOKIE, sameSite: "lax", path: "/" });
+  void onLogin(mailbox.id, mailbox.email, req.ip, req.headers["user-agent"]).catch(() => {}); // log + new-device alert
   return { token, profile: { email: mailbox.email, displayName: mailbox.displayName } };
 }
 
@@ -132,11 +134,13 @@ export default async function authRoutes(app: FastifyInstance) {
   app.post("/auth/2fa/verify", { preHandler: [app.authenticate] }, async (req, reply) => {
     const { code } = z.object({ code: z.string().length(6) }).parse(req.body);
     if (!(await verifyAndEnable(req.creds!.mailboxId, code))) throw Errors.invalidCredentials();
+    await recordEvent(req.creds!.mailboxId, "2fa_enabled", { ip: req.ip, detail: "authenticator" });
     return reply.send({ success: true, data: { totpEnabled: true } });
   });
 
   app.post("/auth/2fa/disable", { preHandler: [app.authenticate] }, async (req, reply) => {
     await disableTotp(req.creds!.mailboxId);
+    await recordEvent(req.creds!.mailboxId, "2fa_disabled", { ip: req.ip, detail: "authenticator" });
     return reply.send({ success: true, data: { totpEnabled: false } });
   });
 
@@ -146,11 +150,20 @@ export default async function authRoutes(app: FastifyInstance) {
 
   app.post("/auth/sessions/:id/revoke", { preHandler: [app.authenticate] }, async (req, reply) => {
     const { id } = z.object({ id: z.string().min(1) }).parse(req.params);
-    return reply.send({ success: true, data: await revokeSession(req.creds!.mailboxId, id) });
+    const r = await revokeSession(req.creds!.mailboxId, id);
+    if (r.revoked) await recordEvent(req.creds!.mailboxId, "session_revoked", { ip: req.ip });
+    return reply.send({ success: true, data: r });
   });
 
-  app.post("/auth/sessions/revoke-others", { preHandler: [app.authenticate] }, async (req, reply) =>
-    reply.send({ success: true, data: await revokeOtherSessions(req.creds!.mailboxId, currentSessionHash(req)) }));
+  app.post("/auth/sessions/revoke-others", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const r = await revokeOtherSessions(req.creds!.mailboxId, currentSessionHash(req));
+    if (r.revoked) await recordEvent(req.creds!.mailboxId, "session_revoked", { ip: req.ip, detail: `${r.revoked} others` });
+    return reply.send({ success: true, data: r });
+  });
+
+  // ── Security activity log ──
+  app.get("/auth/security-log", { preHandler: [app.authenticate] }, async (req, reply) =>
+    reply.send({ success: true, data: await listEvents(req.creds!.mailboxId) }));
 
   // ── Recovery email ──
   app.post("/auth/recovery-email", { preHandler: [app.authenticate] }, async (req, reply) => {
@@ -159,6 +172,7 @@ export default async function authRoutes(app: FastifyInstance) {
       throw new AppError(400, "INVALID_RECOVERY", "Use a different address than your own mailbox.");
     }
     await setRecoveryEmail(req.creds!.mailboxId, email);
+    await recordEvent(req.creds!.mailboxId, "recovery_email_changed", { ip: req.ip });
     return reply.send({ success: true, data: { recoveryEmail: email.toLowerCase() } });
   });
 
@@ -182,11 +196,13 @@ export default async function authRoutes(app: FastifyInstance) {
     if (!stored || stored !== code.trim()) throw Errors.invalidCredentials();
     await redis.del(otpSetupKey(req.creds!.mailboxId));
     await setEmailOtpEnabled(req.creds!.mailboxId, true);
+    await recordEvent(req.creds!.mailboxId, "2fa_enabled", { ip: req.ip, detail: "email code" });
     return reply.send({ success: true, data: { emailOtpEnabled: true } });
   });
 
   app.post("/auth/2fa/email/disable", { preHandler: [app.authenticate] }, async (req, reply) => {
     await setEmailOtpEnabled(req.creds!.mailboxId, false);
+    await recordEvent(req.creds!.mailboxId, "2fa_disabled", { ip: req.ip, detail: "email code" });
     return reply.send({ success: true, data: { emailOtpEnabled: false } });
   });
 }

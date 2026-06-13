@@ -5,6 +5,7 @@ import {
   wm2faSetup, wm2faVerify, wm2faDisable,
   wmSetRecoveryEmail, wmEmail2faSetup, wmEmail2faVerify, wmEmail2faDisable,
   wmSessions, wmRevokeSession, wmRevokeOtherSessions, type WmSession,
+  wmSecurityLog, type SecurityEvent,
   WmError,
 } from "./api";
 import { useWebmail } from "./store";
@@ -31,7 +32,45 @@ export function TwoFactor() {
       <AuthenticatorCard enabled={!!totpEnabled} onChange={(v) => patch({ totpEnabled: v })} />
       <EmailOtpCard enabled={!!emailOtpEnabled} hasRecovery={!!recoveryEmail} onChange={(v) => patch({ emailOtpEnabled: v })} />
       <SessionsCard />
+      <ActivityCard />
     </div>
+  );
+}
+
+const EVENT_LABEL: Record<string, string> = {
+  login: "Signed in",
+  login_new_device: "Signed in from a new device",
+  "2fa_enabled": "Two-factor enabled",
+  "2fa_disabled": "Two-factor disabled",
+  password_changed: "Password changed",
+  recovery_email_changed: "Recovery email changed",
+  app_password_created: "App password created",
+  app_password_revoked: "App password revoked",
+  session_revoked: "Session signed out",
+};
+
+function ActivityCard() {
+  const { data, isLoading } = useQuery({ queryKey: ["wm", "security-log"], queryFn: wmSecurityLog });
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Recent security activity</CardTitle></CardHeader>
+      <CardContent>
+        {isLoading ? <p className="text-sm text-text-secondary">Loading…</p>
+          : !data || data.length === 0 ? <p className="text-sm text-text-secondary">No activity recorded yet.</p>
+          : (
+            <ul className="divide-y divide-border text-sm">
+              {data.map((e: SecurityEvent, i) => (
+                <li key={i} className="flex items-center justify-between gap-3 py-2">
+                  <span className={e.type === "login_new_device" ? "font-medium text-warning" : ""}>
+                    {EVENT_LABEL[e.type] ?? e.type}{e.detail ? ` · ${e.detail}` : ""}
+                  </span>
+                  <span className="shrink-0 text-right text-xs text-text-secondary">{e.ip ?? ""} · {new Date(e.ts).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+      </CardContent>
+    </Card>
   );
 }
 
