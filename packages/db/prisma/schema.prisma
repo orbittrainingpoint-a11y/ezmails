@@ -272,10 +272,29 @@ model Mailbox {
 
   domain       Domain               @relation(fields: [domainId], references: [id], onDelete: Cascade)
   appPasswords MailboxAppPassword[]
+  passkeys     MailboxPasskey[]
 
   @@index([domainId])
   @@index([email])
   @@map("mailboxes")
+}
+
+// WebAuthn passkeys (phishing-resistant 2FA): Face ID / Windows Hello / security keys.
+model MailboxPasskey {
+  id           String    @id @default(uuid()) @db.Uuid
+  mailboxId    String    @map("mailbox_id") @db.Uuid
+  credentialId String    @unique @map("credential_id") @db.VarChar(512) // base64url
+  publicKey    Bytes     @map("public_key")
+  counter      BigInt    @default(0)
+  transports   String?   @db.VarChar(255) // comma-separated
+  name         String    @db.VarChar(100) // user-chosen device label
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz
+
+  mailbox Mailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
+  @@index([mailboxId])
+  @@map("mailbox_passkeys")
 }
 
 // App-specific passwords (Gmail-style) for configuring this mailbox in external

@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ShieldCheck, Smartphone, Mail, KeyRound, Monitor, LogOut } from "lucide-react";
+import { ShieldCheck, Smartphone, Mail, KeyRound, Monitor, LogOut, Fingerprint, Trash2 } from "lucide-react";
+import { startRegistration, type PublicKeyCredentialCreationOptionsJSON } from "@simplewebauthn/browser";
 import {
   wm2faSetup, wm2faVerify, wm2faDisable,
   wmSetRecoveryEmail, wmEmail2faSetup, wmEmail2faVerify, wmEmail2faDisable,
   wmSessions, wmRevokeSession, wmRevokeOtherSessions, type WmSession,
   wmSecurityLog, type SecurityEvent,
+  wmPasskeys, wmPasskeyRegisterOptions, wmPasskeyRegister, wmDeletePasskey, type Passkey,
   WmError,
 } from "./api";
 import { useWebmail } from "./store";
@@ -29,6 +31,7 @@ export function TwoFactor() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Security</h1>
       <RecoveryEmailCard current={recoveryEmail} onSaved={(e) => patch({ recoveryEmail: e })} />
+      <PasskeysCard />
       <AuthenticatorCard enabled={!!totpEnabled} onChange={(v) => patch({ totpEnabled: v })} />
       <EmailOtpCard enabled={!!emailOtpEnabled} hasRecovery={!!recoveryEmail} onChange={(v) => patch({ emailOtpEnabled: v })} />
       <SessionsCard />
@@ -147,6 +150,54 @@ function RecoveryEmailCard({ current, onSaved }: { current: string; onSaved: (em
           <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!email.trim() || email.trim() === current}>Save</Button>
         </div>
         {current && <p className="text-xs text-text-secondary">Current: {current}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PasskeysCard() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["wm", "passkeys"], queryFn: wmPasskeys });
+  const [adding, setAdding] = useState(false);
+
+  async function addPasskey() {
+    setAdding(true);
+    try {
+      const options = await wmPasskeyRegisterOptions();
+      const response = await startRegistration({ optionsJSON: options as unknown as PublicKeyCredentialCreationOptionsJSON });
+      const name = `${navigator.platform || "Device"} · ${new Date().toLocaleDateString()}`;
+      await wmPasskeyRegister(name, response);
+      qc.invalidateQueries({ queryKey: ["wm", "passkeys"] });
+      toast.success("Passkey added.");
+    } catch (e) {
+      if (e instanceof WmError) toast.error(e.message);
+      else toast.error("Passkey setup was cancelled or isn't supported on this device.");
+    } finally { setAdding(false); }
+  }
+  const remove = useMutation({
+    mutationFn: (id: string) => wmDeletePasskey(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["wm", "passkeys"] }); toast.success("Passkey removed."); },
+  });
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Fingerprint className="h-4 w-4" /> Passkeys (Face ID / Windows Hello / security key)</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-text-secondary">The strongest, phishing-proof second factor. After your password, approve sign-in with your device biometrics or a security key.</p>
+        {isLoading ? <p className="text-sm text-text-secondary">Loading…</p> : (data?.length ?? 0) > 0 && (
+          <ul className="divide-y divide-border">
+            {data!.map((p: Passkey) => (
+              <li key={p.id} className="flex items-center justify-between py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-medium"><Fingerprint className="h-4 w-4 text-text-secondary" /> {p.name}</div>
+                  <div className="text-xs text-text-secondary">Added {new Date(p.createdAt).toLocaleDateString()}{p.lastUsedAt ? ` · last used ${new Date(p.lastUsedAt).toLocaleDateString()}` : ""}</div>
+                </div>
+                <Button variant="ghost" size="sm" className="text-danger" onClick={() => remove.mutate(p.id)} loading={remove.isPending && remove.variables === p.id}><Trash2 className="h-4 w-4" /></Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button onClick={addPasskey} loading={adding}><Fingerprint className="h-4 w-4" /> Add a passkey</Button>
       </CardContent>
     </Card>
   );

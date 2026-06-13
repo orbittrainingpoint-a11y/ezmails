@@ -13,6 +13,10 @@ import { WEBMAIL_COOKIE } from "../plugins/auth.js";
 import { isTotpEnabled, verifyLoginCode, setupTotp, verifyAndEnable, disableTotp } from "../services/totp.service.js";
 import { genOtp, getRecoveryEmail, setRecoveryEmail, isEmailOtpEnabled, setEmailOtpEnabled, sendOtpEmail, maskEmail } from "../services/mfa.service.js";
 import { onLogin, recordEvent, listEvents } from "../services/security.service.js";
+import {
+  listPasskeys, hasPasskeys, getRegistrationOptions, verifyRegistration, deletePasskey,
+  getAuthenticationOptions, verifyAuthentication,
+} from "../services/passkey.service.js";
 
 const otpSetupKey = (mailboxId: string) => `webmail:emailotp:setup:${mailboxId}`;
 
@@ -63,45 +67,79 @@ export default async function authRoutes(app: FastifyInstance) {
     }
     await clearFailures(`login:${emailKey}`);
 
-    // Webmail 2FA gate — authenticator (TOTP) or a one-time code emailed to the recovery address.
+    // Webmail 2FA gate — passkey (WebAuthn), authenticator (TOTP), or an emailed code.
+    const passkey = await hasPasskeys(mailbox.id);
     const totp = await isTotpEnabled(mailbox.id);
-    const emailOtp = !totp && (await isEmailOtpEnabled(mailbox.id));
-    if (totp || emailOtp) {
-      const method = totp ? "totp" : "email";
+    const emailOtp = await isEmailOtpEnabled(mailbox.id);
+    if (passkey || totp || emailOtp) {
+      const methods: string[] = [];
+      if (passkey) methods.push("passkey");
+      if (totp) methods.push("totp");
+      if (emailOtp) methods.push("email");
+      const primary = methods[0]!;
       const mfaToken = randomToken(24);
+
       let otp: string | undefined;
       let hint: string | undefined;
-      if (method === "email") {
-        const rec = await getRecoveryEmail(mailbox.id);
-        if (rec) {
-          otp = genOtp();
-          hint = maskEmail(rec);
-          await sendOtpEmail(rec, otp).catch(() => {});
-        }
+      let passkeyChallenge: string | undefined;
+      let passkeyOptions: unknown;
+      if (passkey) {
+        passkeyOptions = await getAuthenticationOptions(mailbox.id);
+        passkeyChallenge = (passkeyOptions as { challenge?: string } | null)?.challenge;
       }
-      await redis.set(mfaKey(mfaToken), JSON.stringify({ mailboxId: mailbox.id, email: emailKey, p: encrypt(password), method, otp }), "EX", 300);
-      return reply.send({ success: true, data: { mfaRequired: true, mfaToken, method, hint } });
+      if (emailOtp) hint = maskEmail((await getRecoveryEmail(mailbox.id)) ?? "");
+      // Pre-send the email code only if it's the only/primary factor (avoid emailing on every passkey login).
+      if (primary === "email") {
+        const rec = await getRecoveryEmail(mailbox.id);
+        if (rec) { otp = genOtp(); await sendOtpEmail(rec, otp).catch(() => {}); }
+      }
+      await redis.set(mfaKey(mfaToken), JSON.stringify({ mailboxId: mailbox.id, email: emailKey, p: encrypt(password), methods, otp, passkeyChallenge }), "EX", 300);
+      return reply.send({ success: true, data: { mfaRequired: true, mfaToken, method: primary, methods, hint, passkeyOptions } });
     }
 
     return reply.send({ success: true, data: await issueSession(req, reply, mailbox, email, password) });
   });
 
+  // Send (or re-send) an email OTP during a multi-method MFA challenge.
+  app.post("/auth/mfa/send-email-code", async (req, reply) => {
+    const { mfaToken } = z.object({ mfaToken: z.string() }).parse(req.body);
+    const raw = await redis.get(mfaKey(mfaToken));
+    if (!raw) throw Errors.unauthorized("Challenge expired. Please sign in again.");
+    const payload = JSON.parse(raw) as { mailboxId: string; methods?: string[] };
+    if (!payload.methods?.includes("email")) throw new AppError(400, "NO_EMAIL_2FA", "Email codes aren't enabled.");
+    const rec = await getRecoveryEmail(payload.mailboxId);
+    if (!rec) throw new AppError(400, "NO_RECOVERY_EMAIL", "No recovery email on file.");
+    const otp = genOtp();
+    await sendOtpEmail(rec, otp).catch(() => {});
+    await redis.set(mfaKey(mfaToken), JSON.stringify({ ...payload, otp }), "EX", 300);
+    return reply.send({ success: true, data: { sent: true, hint: maskEmail(rec) } });
+  });
+
   app.post("/auth/mfa", async (req, reply) => {
-    const { mfaToken, code } = z.object({ mfaToken: z.string(), code: z.string().min(6) }).parse(req.body);
+    const { mfaToken, code, passkey } = z.object({
+      mfaToken: z.string(),
+      code: z.string().optional(),
+      passkey: z.any().optional(),
+    }).parse(req.body);
     const ipLimit = await hitLimit(`mfa:ip:${req.ip}`, 30, 300);
     if (!ipLimit.ok) throw new AppError(429, "RATE_LIMITED", "Too many attempts. Try again later.");
 
     const raw = await redis.get(mfaKey(mfaToken));
     if (!raw) throw Errors.unauthorized("MFA challenge expired. Please sign in again.");
-    const { mailboxId, email, p, method, otp } = JSON.parse(raw) as { mailboxId: string; email: string; p: string; method?: string; otp?: string };
+    const { mailboxId, email, p, otp, passkeyChallenge } = JSON.parse(raw) as { mailboxId: string; email: string; p: string; otp?: string; passkeyChallenge?: string };
 
-    const ok = method === "email" ? !!otp && code.trim() === otp : await verifyLoginCode(mailboxId, code);
+    let ok = false;
+    if (passkey && passkeyChallenge) {
+      ok = await verifyAuthentication(mailboxId, passkey, passkeyChallenge);
+    } else if (code) {
+      ok = (!!otp && code.trim() === otp) || (await verifyLoginCode(mailboxId, code));
+    }
+
     if (!ok) {
-      // Invalidate the challenge after too many wrong codes (anti brute-force).
       await recordFailure(`mfa:${mfaToken}`, 300);
       if ((await isLockedOut(`mfa:${mfaToken}`, 5)).locked) {
         await redis.del(mfaKey(mfaToken));
-        throw Errors.unauthorized("Too many incorrect codes. Please sign in again.");
+        throw Errors.unauthorized("Too many incorrect attempts. Please sign in again.");
       }
       throw Errors.invalidCredentials();
     }
@@ -159,6 +197,27 @@ export default async function authRoutes(app: FastifyInstance) {
     const r = await revokeOtherSessions(req.creds!.mailboxId, currentSessionHash(req));
     if (r.revoked) await recordEvent(req.creds!.mailboxId, "session_revoked", { ip: req.ip, detail: `${r.revoked} others` });
     return reply.send({ success: true, data: r });
+  });
+
+  // ── Passkeys (WebAuthn) ──
+  app.get("/auth/passkeys", { preHandler: [app.authenticate] }, async (req, reply) =>
+    reply.send({ success: true, data: await listPasskeys(req.creds!.mailboxId) }));
+
+  app.post("/auth/passkeys/register-options", { preHandler: [app.authenticate] }, async (req, reply) =>
+    reply.send({ success: true, data: await getRegistrationOptions(req.creds!.mailboxId, req.creds!.email) }));
+
+  app.post("/auth/passkeys/register", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { name, response } = z.object({ name: z.string().min(1).max(100), response: z.any() }).parse(req.body);
+    await verifyRegistration(req.creds!.mailboxId, response, name);
+    await recordEvent(req.creds!.mailboxId, "2fa_enabled", { ip: req.ip, detail: "passkey" });
+    return reply.send({ success: true, data: { added: true } });
+  });
+
+  app.delete("/auth/passkeys/:id", { preHandler: [app.authenticate] }, async (req, reply) => {
+    const { id } = z.object({ id: z.string().min(1) }).parse(req.params);
+    await deletePasskey(req.creds!.mailboxId, id);
+    await recordEvent(req.creds!.mailboxId, "2fa_disabled", { ip: req.ip, detail: "passkey removed" });
+    return reply.send({ success: true, data: { removed: true } });
   });
 
   // ── Security activity log ──

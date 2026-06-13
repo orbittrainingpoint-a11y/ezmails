@@ -74,15 +74,21 @@ export interface WmSettings {
 }
 
 // ── Calls ──
+export interface MfaChallenge { mfaRequired: true; mfaToken: string; method?: string; methods?: string[]; hint?: string; passkeyOptions?: unknown }
 export type LoginResult =
   | { token: string; profile: { email: string; displayName: string | null } }
-  | { mfaRequired: true; mfaToken: string; method?: "totp" | "email"; hint?: string };
-export const isMfaChallenge = (r: LoginResult): r is { mfaRequired: true; mfaToken: string; method?: "totp" | "email"; hint?: string } =>
+  | MfaChallenge;
+export const isMfaChallenge = (r: LoginResult): r is MfaChallenge =>
   (r as { mfaRequired?: boolean }).mfaRequired === true;
 export const wmLogin = (email: string, password: string) =>
   wm<LoginResult>("/auth/login", { method: "POST", body: { email, password } });
+type MfaOk = { token: string; profile: { email: string; displayName: string | null } };
 export const wmMfa = (mfaToken: string, code: string) =>
-  wm<{ token: string; profile: { email: string; displayName: string | null } }>("/auth/mfa", { method: "POST", body: { mfaToken, code } });
+  wm<MfaOk>("/auth/mfa", { method: "POST", body: { mfaToken, code } });
+export const wmMfaPasskey = (mfaToken: string, passkey: unknown) =>
+  wm<MfaOk>("/auth/mfa", { method: "POST", body: { mfaToken, passkey } });
+export const wmMfaSendEmailCode = (mfaToken: string) =>
+  wm<{ sent: boolean; hint: string }>("/auth/mfa/send-email-code", { method: "POST", body: { mfaToken } });
 export const wmMe = () => wm<{ email: string; displayName: string | null; totpEnabled?: boolean; emailOtpEnabled?: boolean; recoveryEmail?: string | null }>("/auth/me");
 export const wmLogout = () => wm("/auth/logout", { method: "POST" });
 
@@ -106,6 +112,13 @@ export const wmRevokeOtherSessions = () => wm<{ revoked: number }>("/auth/sessio
 // Security activity log
 export interface SecurityEvent { ts: string; type: string; ip?: string; ua?: string; detail?: string }
 export const wmSecurityLog = () => wm<SecurityEvent[]>("/auth/security-log");
+
+// Passkeys (WebAuthn)
+export interface Passkey { id: string; name: string; createdAt: string; lastUsedAt: string | null }
+export const wmPasskeys = () => wm<Passkey[]>("/auth/passkeys");
+export const wmPasskeyRegisterOptions = () => wm<Record<string, unknown>>("/auth/passkeys/register-options", { method: "POST" });
+export const wmPasskeyRegister = (name: string, response: unknown) => wm("/auth/passkeys/register", { method: "POST", body: { name, response } });
+export const wmDeletePasskey = (id: string) => wm(`/auth/passkeys/${id}`, { method: "DELETE" });
 
 // App passwords (configure this mailbox in external IMAP/SMTP clients)
 export interface AppPassword { id: string; label: string; lastUsedAt: string | null; createdAt: string }
