@@ -12,6 +12,8 @@ import { Calendar } from "./Calendar";
 import { Planner } from "./Planner";
 import { Tasks } from "./Tasks";
 import { CalendarTasks } from "./CalendarTasks";
+import { TwoFactorNag } from "./TwoFactorNag";
+import { MailNotifier } from "./MailNotifier";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
 import { FullPageSpinner } from "@/components/ui/Spinner";
@@ -89,6 +91,8 @@ export function WebmailApp() {
         </div>
         {showPanel && <CalendarTasks onClose={() => setShowPanel(false)} />}
       </div>
+      <TwoFactorNag />
+      <MailNotifier />
     </div>
   );
 }

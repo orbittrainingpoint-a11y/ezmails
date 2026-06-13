@@ -210,6 +210,22 @@ function NotificationsSection() {
     mutationFn: (p: Record<string, unknown>) => wmSaveSettings({ prefs: { ...prefs, ...p } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["wm", "fullsettings"] }); toast.success("Saved."); },
   });
+  const [desktopOn, setDesktopOn] = useState(typeof localStorage !== "undefined" && localStorage.getItem("desktopNotify") === "1");
+  // Desktop notifications need both the browser permission AND our local flag.
+  async function toggleDesktop(on: boolean) {
+    if (on) {
+      const perm = typeof Notification !== "undefined" ? await Notification.requestPermission().catch(() => "denied" as const) : "denied";
+      if (perm !== "granted") { toast.error("Browser notifications are blocked — allow them in your browser/site settings."); return; }
+      localStorage.setItem("desktopNotify", "1");
+      setDesktopOn(true);
+      save.mutate({ desktopNotifications: true });
+      new Notification("Infinit Email", { body: "Notifications are on — you'll be alerted about new mail.", icon: "/icon.svg" });
+    } else {
+      localStorage.removeItem("desktopNotify");
+      setDesktopOn(false);
+      save.mutate({ desktopNotifications: false });
+    }
+  }
   const Row = ({ k, label }: { k: string; label: string }) => (
     <label className="flex items-center justify-between border-b border-border py-3 text-sm last:border-0">
       {label}
@@ -220,7 +236,10 @@ function NotificationsSection() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
       <Card><CardContent>
-        <Row k="desktopNotifications" label="Desktop notifications for new mail" />
+        <label className="flex items-center justify-between border-b border-border py-3 text-sm">
+          <span>Desktop notifications for new mail<span className="block text-xs text-text-secondary">Alerts while the app/PWA is open.</span></span>
+          <input type="checkbox" className="accent-primary" checked={desktopOn} onChange={(e) => toggleDesktop(e.target.checked)} />
+        </label>
         <Row k="soundOnNew" label="Play a sound on new mail" />
         <Row k="notifyImportantOnly" label="Notify for important messages only" />
       </CardContent></Card>
