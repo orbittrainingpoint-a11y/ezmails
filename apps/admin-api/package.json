@@ -22,7 +22,7 @@
     "fastify-plugin": "^4.5.1",
     "ioredis": "^5.4.1",
     "jose": "^5.9.6",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^8.0.11",
     "otplib": "^12.0.1",
     "pino": "^9.5.0",
     "qrcode": "^1.5.4",

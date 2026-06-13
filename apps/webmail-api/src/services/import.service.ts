@@ -7,6 +7,7 @@
 import { ImapFlow } from "imapflow";
 import { env } from "../config/env.js";
 import { openImap } from "../lib/imap.js";
+import { assertPublicHost } from "../lib/ssrf.js";
 import type { WebmailCreds } from "../lib/session.js";
 
 export interface ImportSource {
@@ -46,6 +47,9 @@ export async function importFromImap(
     throw new Error("Import requires a live mail server (unavailable in dev mode).");
   }
   const maxPerFolder = Math.min(opts.maxPerFolder ?? 2000, 5000);
+
+  // SSRF guard: never let a user point the importer at internal infrastructure.
+  await assertPublicHost(source.host);
 
   const src = new ImapFlow({
     host: source.host,
