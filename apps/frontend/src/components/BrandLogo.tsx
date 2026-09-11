@@ -1,26 +1,14 @@
-import type { SVGProps } from "react";
+import type { ImgHTMLAttributes } from "react";
+import { useTheme } from "@/stores/theme";
 
-/**
- * Infinit Email brand mark — an infinity loop (figure-eight) with an envelope
- * flap at the centre. Drawn with `currentColor` so it inherits text colour and
- * sits inside the gradient logo chips used across the app.
- */
-export function BrandLogo(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      {...props}
-    >
-      {/* infinity */}
-      <path d="M12 12C12 9.5 6 9.5 6 12C6 14.5 12 14.5 12 12C12 9.5 18 9.5 18 12C18 14.5 12 14.5 12 12Z" />
-      {/* envelope flap */}
-      <path d="M9.6 11.2 12 13.5 14.4 11.2" />
-    </svg>
-  );
+/** Full "Infinit Email" lockup (icon + wordmark). Swaps asset by theme since the artwork isn't recolorable like the old inline SVG. */
+export function BrandLogo(props: ImgHTMLAttributes<HTMLImageElement>) {
+  const { theme } = useTheme();
+  const src = theme === "dark" ? "/logo-dark.png" : "/logo-light.png";
+  return <img src={src} alt="Infinit Email" {...props} />;
+}
+
+/** Icon-only mark (no wordmark) for slots too small for the full lockup, e.g. an install-prompt card. */
+export function BrandMark(props: ImgHTMLAttributes<HTMLImageElement>) {
+  return <img src="/icon-512.png" alt="Infinit Email" {...props} />;
 }

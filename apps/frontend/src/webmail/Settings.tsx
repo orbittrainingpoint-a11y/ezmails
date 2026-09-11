@@ -219,7 +219,7 @@ function NotificationsSection() {
       localStorage.setItem("desktopNotify", "1");
       setDesktopOn(true);
       save.mutate({ desktopNotifications: true });
-      new Notification("Infinit Email", { body: "Notifications are on — you'll be alerted about new mail.", icon: "/icon.svg" });
+      new Notification("Infinit Email", { body: "Notifications are on — you'll be alerted about new mail.", icon: "/icon-192.png" });
     } else {
       localStorage.removeItem("desktopNotify");
       setDesktopOn(false);
@@ -821,8 +821,7 @@ function BrandingSection() {
       <h1 className="text-2xl font-semibold tracking-tight">Branding</h1>
       <Card><CardContent className="space-y-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary text-white"><BrandLogo className="h-5 w-5" /></div>
-          <span className="text-lg font-semibold">Infinit Email</span>
+          <BrandLogo className="h-7 w-auto" />
         </div>
         <p className="text-sm text-text-secondary">Your private, self-hosted email platform. Admins can customise the workspace branding from the admin panel.</p>
       </CardContent></Card>

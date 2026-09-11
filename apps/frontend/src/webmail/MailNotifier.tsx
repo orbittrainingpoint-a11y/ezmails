@@ -19,7 +19,7 @@ export function MailNotifier() {
     if (enabled && granted && last.current !== null && unread > last.current && document.visibilityState !== "visible") {
       const n = unread - last.current;
       try {
-        new Notification("Infinit Email", { body: `${n} new message${n > 1 ? "s" : ""} in your inbox.`, icon: "/icon.svg", tag: "new-mail" });
+        new Notification("Infinit Email", { body: `${n} new message${n > 1 ? "s" : ""} in your inbox.`, icon: "/icon-192.png", tag: "new-mail" });
       } catch {
         /* notifications unsupported */
       }

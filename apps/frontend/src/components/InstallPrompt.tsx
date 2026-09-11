@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Download, X, Share } from "lucide-react";
-import { BrandLogo } from "@/components/BrandLogo";
+import { BrandMark } from "@/components/BrandLogo";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -59,9 +59,7 @@ export function InstallPrompt() {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] flex justify-center p-3">
       <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-2xl">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary">
-          <BrandLogo className="h-5 w-5 text-white" />
-        </div>
+        <BrandMark className="h-10 w-10 shrink-0 rounded-lg" />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">Install Infinit Email</div>
           {ios ? (

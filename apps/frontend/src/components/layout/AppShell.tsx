@@ -62,10 +62,7 @@ export function AppShell() {
         )}
       >
         <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary">
-            <BrandLogo className="h-4 w-4 text-white" />
-          </div>
-          <span className="font-semibold tracking-tight">Infinit Email</span>
+          <BrandLogo className="h-6 w-auto" />
         </div>
         <nav className="flex flex-col gap-1 p-3">
           {items.map((item) => (

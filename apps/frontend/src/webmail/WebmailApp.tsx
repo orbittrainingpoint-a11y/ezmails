@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, NavLink, Navigate, useNavigate } from "react-router-dom";
 import { Inbox as InboxIcon, Users, Settings as SettingsIcon, LogOut, Megaphone, CalendarDays, PanelRightOpen, HelpCircle, LayoutGrid, CheckSquare } from "lucide-react";
-import { BrandLogo } from "@/components/BrandLogo";
+import { BrandLogo, BrandMark } from "@/components/BrandLogo";
 import { wmMe, wmLogout } from "./api";
 import { useWebmail } from "./store";
 import { Inbox } from "./Inbox";
@@ -51,10 +51,8 @@ export function WebmailApp() {
       <header className="flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border bg-surface px-2 sm:px-4">
         <div className="flex items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-primary to-secondary">
-              <BrandLogo className="h-4 w-4 text-white" />
-            </div>
-            <span className="hidden font-semibold sm:inline">Infinit Email</span>
+            <BrandLogo className="hidden h-6 w-auto sm:block" />
+            <BrandMark className="h-7 w-7 rounded-md sm:hidden" />
           </div>
           <nav className="flex items-center gap-0.5 sm:gap-1">
             <NavLink to="/webmail" end className={navCls} title="Mail"><InboxIcon className="h-4 w-4" /> <span className="hidden md:inline">Mail</span></NavLink>
