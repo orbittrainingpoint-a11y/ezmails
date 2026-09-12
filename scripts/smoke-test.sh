@@ -31,4 +31,32 @@ if docker compose exec -T postfix sh -c 'echo QUIT | nc -w 3 localhost 25' 2>/de
 # 6. Node agent reachable
 if docker compose exec -T admin-api wget -qO- --header="x-internal-token: ${INTERNAL_TOKEN:-}" http://postfix:9101/stats 2>/dev/null | grep -q cpu; then pass "node agent reachable"; else fail "node agent not reachable"; fi
 
+# 7. Real inbound delivery test (optional — same check the admin panel's "Send test
+# email" button runs). Opt in by setting SMOKE_TEST_DOMAIN_ID, SMOKE_TEST_MAILBOX_ID,
+# SMOKE_ADMIN_EMAIL, SMOKE_ADMIN_PASSWORD; skipped otherwise since it needs a real
+# vps_hosted domain + mailbox to test against.
+if [[ -n "${SMOKE_TEST_DOMAIN_ID:-}" && -n "${SMOKE_TEST_MAILBOX_ID:-}" && -n "${SMOKE_ADMIN_EMAIL:-}" && -n "${SMOKE_ADMIN_PASSWORD:-}" ]]; then
+  ADMIN_BASE_URL="http://127.0.0.1:13001/api/v1"
+  LOGIN_JSON=$(curl -s -X POST "$ADMIN_BASE_URL/auth/login" -H 'content-type: application/json' \
+    -d "{\"email\":\"$SMOKE_ADMIN_EMAIL\",\"password\":\"$SMOKE_ADMIN_PASSWORD\"}")
+  TOKEN=$(echo "$LOGIN_JSON" | grep -o '"accessToken":"[^"]*"' | cut -d'"' -f4)
+  if [[ -z "$TOKEN" ]]; then
+    fail "delivery test: could not log in as $SMOKE_ADMIN_EMAIL"
+  else
+    curl -s -o /dev/null -X POST "$ADMIN_BASE_URL/domains/$SMOKE_TEST_DOMAIN_ID/dns/test-delivery" \
+      -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+      -d "{\"mailboxId\":\"$SMOKE_TEST_MAILBOX_ID\"}"
+    STATUS=""
+    for _ in $(seq 1 30); do
+      sleep 1.5
+      DOMAIN_JSON=$(curl -s "$ADMIN_BASE_URL/domains/$SMOKE_TEST_DOMAIN_ID" -H "authorization: Bearer $TOKEN")
+      STATUS=$(echo "$DOMAIN_JSON" | grep -o '"lastDeliveryTestStatus":"[^"]*"' | cut -d'"' -f4)
+      [[ -n "$STATUS" ]] && break
+    done
+    if [[ "$STATUS" == "passed" ]]; then pass "inbound delivery test passed"; else fail "inbound delivery test: ${STATUS:-no result within timeout}"; fi
+  fi
+else
+  echo "  (skipping inbound delivery test — set SMOKE_TEST_DOMAIN_ID/SMOKE_TEST_MAILBOX_ID/SMOKE_ADMIN_EMAIL/SMOKE_ADMIN_PASSWORD to enable)"
+fi
+
 [[ "$FAILED" -eq 0 ]] && echo "All checks passed." || { echo "Some checks failed — see 'docker compose logs'."; exit 1; }

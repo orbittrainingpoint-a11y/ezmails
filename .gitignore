@@ -24,6 +24,12 @@ npm-debug.log*
 # Prisma
 packages/db/prisma/migrations/dev.db*
 
+# Playwright — auth.json holds real session cookies, never commit it.
+apps/frontend/e2e/.auth/
+apps/frontend/test-results/
+apps/frontend/playwright-report/
+apps/frontend/blob-report/
+
 # Runtime data (mail, db volumes when bind-mounted). Root-anchored so they don't
 # accidentally match source folders like apps/frontend/src/features/mailboxes/.
 /data/
