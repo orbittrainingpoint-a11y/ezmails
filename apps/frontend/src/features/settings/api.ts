@@ -26,3 +26,13 @@ export interface EmailAlerts {
 }
 export const getEmailAlerts = () => api<EmailAlerts>("/notifications/settings/email");
 export const setEmailAlerts = (body: EmailAlerts) => api<EmailAlerts>("/notifications/settings/email", { method: "PUT", body });
+
+// ── Registrar connection (DOM-021) ──
+export type NamecheapConnection =
+  | { configured: true; apiUser: string; username: string; clientIp: string }
+  | { configured: false };
+export const getNamecheapConnection = () => api<NamecheapConnection>("/settings/registrar/namecheap");
+export const setNamecheapConnection = (body: { apiUser: string; apiKey: string; username: string; clientIp: string }) =>
+  api<unknown>("/settings/registrar/namecheap", { method: "PUT", body });
+export const testNamecheapConnection = () =>
+  api<{ ok: boolean; error?: string }>("/settings/registrar/namecheap/test-connection", { method: "POST" });

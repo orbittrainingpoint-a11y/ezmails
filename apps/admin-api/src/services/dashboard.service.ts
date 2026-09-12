@@ -11,11 +11,12 @@ function startOfToday(): Date {
 export async function getDashboard() {
   const since = startOfToday();
 
-  const [delivered, bounced, spamBlocked, nodes] = await Promise.all([
+  const [delivered, bounced, spamBlocked, nodes, domainsNeedingAttention] = await Promise.all([
     prisma.mailLog.count({ where: { status: "delivered", createdAt: { gte: since } } }),
     prisma.mailLog.count({ where: { status: "bounced", createdAt: { gte: since } } }),
     prisma.mailLog.count({ where: { status: "rejected", createdAt: { gte: since } } }),
     prisma.node.findMany(),
+    getDomainsNeedingAttention(),
   ]);
 
   // Live per-node stats (DASH-002) — degrade gracefully if an agent is down.
@@ -42,7 +43,25 @@ export async function getDashboard() {
   return {
     counters: { delivered, bounced, spamBlocked, queueDepth, activeConnections },
     nodes: nodeStats,
+    domainsNeedingAttention,
   };
+}
+
+/** DOM-022: domains whose DNS has an unresolved issue or last delivery test failed, capped at 5. */
+async function getDomainsNeedingAttention() {
+  const domains = await prisma.domain.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { dnsRecords: { some: { status: { in: ["missing", "incorrect"] } } } },
+        { lastDeliveryTestStatus: { in: ["failed", "unexpected_response", "timeout"] } },
+      ],
+    },
+    select: { id: true, domainName: true, lastDeliveryTestStatus: true },
+    take: 5,
+    orderBy: { updatedAt: "desc" },
+  });
+  return domains;
 }
 
 interface VolumePoint {

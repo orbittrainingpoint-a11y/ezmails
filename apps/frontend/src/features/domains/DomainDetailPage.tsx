@@ -35,7 +35,7 @@ export function DomainDetailPage() {
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
         <TabsContent value="dns">
-          <DnsWizard domainId={domain.id} />
+          <DnsWizard domain={domain} />
         </TabsContent>
         <TabsContent value="dkim">
           <DkimPanel domainId={domain.id} />

@@ -1,7 +1,9 @@
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { updateDomain, suspendDomain, unsuspendDomain, deleteDomain, type Domain } from "./api";
+import { domainSettingsFormSchema, type DomainSettingsForm } from "./schemas";
 import { ApiError } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/Button";
@@ -9,19 +11,13 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Dialog, DialogContent, DialogClose, DialogTrigger } from "@/components/ui/Dialog";
 
-interface SettingsForm {
-  maxMailboxes: number;
-  storageQuota: string;
-  sendRate: number;
-  catchAll: string;
-  webmailEnabled: boolean;
-}
-
 export function DomainSettings({ domain }: { domain: Domain }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { register, handleSubmit } = useForm<SettingsForm>({
+  const { register, handleSubmit, formState } = useForm<DomainSettingsForm>({
+    resolver: zodResolver(domainSettingsFormSchema),
     defaultValues: {
+      sourceType: domain.sourceType,
       maxMailboxes: domain.maxMailboxes,
       storageQuota: domain.storageQuota,
       sendRate: domain.sendRate,
@@ -30,20 +26,28 @@ export function DomainSettings({ domain }: { domain: Domain }) {
     },
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["domains", domain.id] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["domains", domain.id] });
+    qc.invalidateQueries({ queryKey: ["domains"] });
+  };
 
   const save = useMutation({
-    mutationFn: (v: SettingsForm) =>
+    mutationFn: (v: DomainSettingsForm) =>
       updateDomain(domain.id, {
-        maxMailboxes: Number(v.maxMailboxes),
+        sourceType: v.sourceType,
+        maxMailboxes: v.maxMailboxes,
         storageQuota: v.storageQuota,
-        sendRate: Number(v.sendRate),
+        sendRate: v.sendRate,
         catchAll: v.catchAll || null,
         webmailEnabled: v.webmailEnabled,
       }),
-    onSuccess: () => {
+    onSuccess: (_, v) => {
       invalidate();
-      toast.success("Domain settings saved.");
+      toast.success(
+        v.sourceType !== domain.sourceType
+          ? "Domain settings saved — DNS requirements updated and re-checking now."
+          : "Domain settings saved.",
+      );
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Save failed."),
   });
@@ -67,14 +71,32 @@ export function DomainSettings({ domain }: { domain: Domain }) {
   return (
     <div className="max-w-xl space-y-6">
       <form onSubmit={handleSubmit((v) => save.mutate(v))} className="space-y-4">
+        <div>
+          <Label htmlFor="sourceType">Source</Label>
+          <select
+            id="sourceType"
+            className="h-10 w-full rounded-md border border-border bg-surface px-3 text-sm"
+            {...register("sourceType")}
+          >
+            <option value="vps_hosted">VPS-hosted (receive mail here)</option>
+            <option value="external">External (send only — inbound stays elsewhere)</option>
+          </select>
+          <p className="mt-1 text-xs text-text-secondary">
+            Changing this updates the domain's required DNS records and re-checks them immediately.
+          </p>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="maxMailboxes">Max mailboxes</Label>
             <Input id="maxMailboxes" type="number" {...register("maxMailboxes")} />
+            {formState.errors.maxMailboxes && (
+              <p className="mt-1 text-xs text-danger">{formState.errors.maxMailboxes.message}</p>
+            )}
           </div>
           <div>
             <Label htmlFor="sendRate">Send rate (msgs/hour)</Label>
             <Input id="sendRate" type="number" {...register("sendRate")} />
+            {formState.errors.sendRate && <p className="mt-1 text-xs text-danger">{formState.errors.sendRate.message}</p>}
           </div>
         </div>
         <div>
@@ -84,6 +106,7 @@ export function DomainSettings({ domain }: { domain: Domain }) {
         <div>
           <Label htmlFor="catchAll">Catch-all address</Label>
           <Input id="catchAll" placeholder="catch@example.com (optional)" {...register("catchAll")} />
+          {formState.errors.catchAll && <p className="mt-1 text-xs text-danger">{formState.errors.catchAll.message}</p>}
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="accent-primary" {...register("webmailEnabled")} />

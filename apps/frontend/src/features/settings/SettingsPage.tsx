@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ShieldCheck, KeyRound, Bell, Trash2, Plus } from "lucide-react";
+import { ShieldCheck, KeyRound, Bell, Trash2, Plus, Globe } from "lucide-react";
 import {
   totpSetup,
   totpVerify,
@@ -10,6 +10,9 @@ import {
   revokeToken,
   getEmailAlerts,
   setEmailAlerts,
+  getNamecheapConnection,
+  setNamecheapConnection,
+  testNamecheapConnection,
   type TotpSetup,
   type EmailAlerts,
 } from "./api";
@@ -36,6 +39,7 @@ export function SettingsPage() {
         <AppearanceCard />
         <ApiTokensCard />
         {role === "super_admin" && <EmailAlertsCard />}
+        {role === "super_admin" && <RegistrarCard />}
       </div>
     </div>
   );
@@ -177,6 +181,83 @@ function EmailAlertsCard() {
           <div><Label htmlFor="address">Alert address</Label><Input id="address" type="email" placeholder="ops@example.com" {...register("address")} /></div>
           <Button type="submit" loading={save.isPending}>Save</Button>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface NamecheapForm {
+  apiUser: string;
+  apiKey: string;
+  username: string;
+  clientIp: string;
+}
+
+function RegistrarCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["registrar-namecheap"], queryFn: getNamecheapConnection });
+  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const { register, handleSubmit, reset } = useForm<NamecheapForm>();
+
+  useEffect(() => {
+    if (data?.configured) reset({ apiUser: data.apiUser, username: data.username, clientIp: data.clientIp, apiKey: "" });
+  }, [data, reset]);
+
+  const save = useMutation({
+    mutationFn: (v: NamecheapForm) => setNamecheapConnection(v),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["registrar-namecheap"] });
+      toast.success("Registrar connection saved.");
+    },
+  });
+
+  const test = useMutation({
+    mutationFn: testNamecheapConnection,
+    onSuccess: setTestResult,
+    onError: () => setTestResult({ ok: false, error: "Request failed." }),
+  });
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2"><Globe className="h-4 w-4" /> Registrar connection (Namecheap)</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-text-secondary">
+          Connect your Namecheap API to auto-configure DNS when adding a domain, instead of copying records by hand.
+          You'll also need to whitelist this server's public IP in your Namecheap account under Profile → Tools →
+          API Access.
+        </p>
+        <form onSubmit={handleSubmit((v) => save.mutate(v))} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div><Label htmlFor="nc-apiUser">API User</Label><Input id="nc-apiUser" {...register("apiUser", { required: true })} /></div>
+            <div><Label htmlFor="nc-username">Username</Label><Input id="nc-username" {...register("username", { required: true })} /></div>
+          </div>
+          <div>
+            <Label htmlFor="nc-apiKey">API Key</Label>
+            <Input
+              id="nc-apiKey"
+              type="password"
+              placeholder={data?.configured ? "Re-enter to update — it's never sent back to the browser" : ""}
+              {...register("apiKey", { required: true })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="nc-clientIp">Whitelisted IP (this server's public IP)</Label>
+            <Input id="nc-clientIp" placeholder="e.g. 88.222.215.20" {...register("clientIp", { required: true })} />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="submit" loading={save.isPending}>Save</Button>
+            {data?.configured && (
+              <Button type="button" variant="outline" onClick={() => test.mutate()} loading={test.isPending}>
+                Test connection
+              </Button>
+            )}
+          </div>
+        </form>
+        {testResult && (
+          <Alert tone={testResult.ok ? "success" : "danger"}>
+            {testResult.ok ? "Connected successfully." : testResult.error ?? "Connection failed."}
+          </Alert>
+        )}
       </CardContent>
     </Card>
   );

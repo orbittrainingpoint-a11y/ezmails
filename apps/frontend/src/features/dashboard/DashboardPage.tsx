@@ -10,7 +10,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { Mail, AlertTriangle, ShieldX, ListChecks, Activity } from "lucide-react";
+import { Mail, AlertTriangle, ShieldX, ListChecks, Activity, ShieldAlert } from "lucide-react";
 import { getDashboard, getVolume, getTopDomains, type Dashboard } from "./api";
 import { useWebSocket } from "@/lib/useWebSocket";
 import { queryClient } from "@/lib/queryClient";
@@ -61,6 +61,39 @@ export function DashboardPage() {
           </button>
         ))}
       </div>
+
+      {/* Domains needing attention (DOM-022) */}
+      {dash.data && dash.data.domainsNeedingAttention.length > 0 && (
+        <Card className="border-danger/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-danger" /> Domains needing attention
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {dash.data.domainsNeedingAttention.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => navigate(`/domains/${d.id}`)}
+                  className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-left text-sm hover:border-danger"
+                >
+                  <span className="font-medium">{d.domainName}</span>
+                  <Badge tone="danger">
+                    {d.lastDeliveryTestStatus === "failed" ? "Delivery failed" : "DNS issue"}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => navigate("/domains?health=attention")}
+              className="mt-3 text-xs text-primary hover:underline"
+            >
+              View all →
+            </button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Node resource gauges (DASH-002) */}
       <Card>

@@ -22,6 +22,7 @@ export interface Dashboard {
     activeConnections: number;
   };
   nodes: NodeStat[];
+  domainsNeedingAttention: { id: string; domainName: string; lastDeliveryTestStatus: string | null }[];
 }
 
 export interface VolumePoint {

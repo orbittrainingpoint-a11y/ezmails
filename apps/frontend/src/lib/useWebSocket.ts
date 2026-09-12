@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useAuth } from "@/stores/auth";
 
 export interface WsEvent {
-  event: "node:stats" | "queue:update" | "alert";
+  event: "node:stats" | "queue:update" | "alert" | "domain:delivery-test";
   data: unknown;
 }
 

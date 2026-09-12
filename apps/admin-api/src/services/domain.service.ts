@@ -73,7 +73,10 @@ export async function listDomains(
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: { _count: { select: { mailboxes: true, aliases: true } } },
+      include: {
+        _count: { select: { mailboxes: true, aliases: true } },
+        dnsRecords: { select: { status: true } },
+      },
     }),
     prisma.domain.count({ where }),
   ]);

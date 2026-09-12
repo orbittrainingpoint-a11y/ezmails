@@ -14,6 +14,7 @@ import mailRoutes from "./routes/mail.routes.js";
 import opsRoutes from "./routes/ops.routes.js";
 import internalRoutes from "./routes/internal.routes.js";
 import tenancyRoutes from "./routes/tenancy.routes.js";
+import settingsRoutes from "./routes/settings.routes.js";
 
 // Prisma returns BigInt for byte-quota columns; make JSON.stringify emit them as strings.
 (BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
@@ -74,6 +75,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(mailRoutes, { prefix: "/api/v1" });
   await app.register(opsRoutes, { prefix: "/api/v1" });
   await app.register(tenancyRoutes, { prefix: "/api/v1" });
+  await app.register(settingsRoutes, { prefix: "/api/v1/settings" });
   await app.register(internalRoutes, { prefix: "/api/v1/internal" });
 
   return app;

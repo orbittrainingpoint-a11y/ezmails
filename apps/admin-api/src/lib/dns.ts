@@ -10,7 +10,7 @@ interface DohAnswer {
 const DOH_URL = "https://cloudflare-dns.com/dns-query";
 
 /** Resolve a name/type via DoH. Returns the raw answer data strings. */
-export async function resolveDns(name: string, type: "MX" | "TXT" | "A" | "CNAME"): Promise<string[]> {
+export async function resolveDns(name: string, type: "MX" | "TXT" | "A" | "CNAME" | "NS"): Promise<string[]> {
   const url = `${DOH_URL}?name=${encodeURIComponent(name)}&type=${type}`;
   const res = await fetch(url, { headers: { accept: "application/dns-json" } });
   if (!res.ok) throw new Error(`DoH query failed: ${res.status}`);

@@ -22,6 +22,7 @@ import {
 import { validateDomainDns } from "../services/dns.service.js";
 import { listDkimKeys, rotateDkim } from "../services/dkim.service.js";
 import { runDeliveryTest } from "../services/delivery-test.service.js";
+import { detectRegistrar, previewDnsSync, applyDnsSync, rollbackDnsSync } from "../services/registrar-sync.service.js";
 
 export default async function domainRoutes(app: FastifyInstance) {
   // All domain routes require authentication.
@@ -137,6 +138,52 @@ export default async function domainRoutes(app: FastifyInstance) {
     await getScopedDomain(req.user!, id);
     const results = await validateDomainDns(id);
     return reply.send({ success: true, data: results });
+  });
+
+  // ── Registrar auto-provisioning (DOM-021): preview → confirm → apply, with rollback ──
+  app.get("/:id/dns/registrar-detect", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const domain = await getScopedDomain(req.user!, id);
+    return reply.send({ success: true, data: { registrar: await detectRegistrar(domain.domainName) } });
+  });
+
+  app.get("/:id/dns/registrar-preview", { preHandler: canManage }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await getScopedDomain(req.user!, id);
+    return reply.send({ success: true, data: await previewDnsSync(id) });
+  });
+
+  app.post("/:id/dns/registrar-apply", { preHandler: canManage }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const domain = await getScopedDomain(req.user!, id);
+    // Re-derive the diff server-side rather than trusting a client-supplied one verbatim.
+    const diff = await previewDnsSync(id);
+    const result = await applyDnsSync(id, diff, req.user!.id);
+    await recordAudit({
+      userId: req.user!.id,
+      action: "domain.dns.registrar_apply",
+      resourceType: "domain",
+      resourceId: id,
+      ipAddress: req.ip,
+      metadata: { domainName: domain.domainName, snapshotId: result.auditLogId, added: diff.toAdd.length, updated: diff.toUpdate.length },
+    });
+    return reply.send({ success: true, data: result });
+  });
+
+  app.post("/:id/dns/registrar-rollback", { preHandler: canManage }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const domain = await getScopedDomain(req.user!, id);
+    const { snapshotId } = z.object({ snapshotId: z.string().uuid() }).parse(req.body);
+    await rollbackDnsSync(id, snapshotId);
+    await recordAudit({
+      userId: req.user!.id,
+      action: "domain.dns.registrar_rollback",
+      resourceType: "domain",
+      resourceId: id,
+      ipAddress: req.ip,
+      metadata: { domainName: domain.domainName, snapshotId },
+    });
+    return reply.send({ success: true });
   });
 
   // ── Live send/receive delivery test (DOM-020) ──
