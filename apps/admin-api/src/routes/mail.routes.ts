@@ -282,7 +282,7 @@ export default async function mailRoutes(app: FastifyInstance) {
     const { id, memberId } = req.params as { id: string; memberId: string };
     const list = await getList(id);
     await getScopedDomain(req.user!, list.domainId);
-    await removeMember(memberId);
+    await removeMember(id, memberId);
     return reply.send({ success: true });
   });
 

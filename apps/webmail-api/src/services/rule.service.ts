@@ -33,7 +33,7 @@ export async function createRule(
 
 export async function updateRule(mailboxId: string, id: string, body: Record<string, unknown>) {
   await prisma.webmailRule.updateMany({ where: { id, mailboxId }, data: body });
-  return prisma.webmailRule.findUnique({ where: { id } });
+  return prisma.webmailRule.findFirst({ where: { id, mailboxId } });
 }
 
 export async function deleteRule(mailboxId: string, id: string) {

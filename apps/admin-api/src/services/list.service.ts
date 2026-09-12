@@ -54,8 +54,9 @@ export async function addMembers(listId: string, emails: string[]) {
   return getList(listId);
 }
 
-export async function removeMember(memberId: string) {
-  await prisma.mailingListMember.delete({ where: { id: memberId } });
+export async function removeMember(listId: string, memberId: string) {
+  const { count } = await prisma.mailingListMember.deleteMany({ where: { id: memberId, listId } });
+  if (count === 0) throw Errors.notFound("List member not found.");
 }
 
 export async function deleteList(id: string) {

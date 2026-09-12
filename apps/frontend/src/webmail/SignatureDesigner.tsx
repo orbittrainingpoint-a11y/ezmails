@@ -5,6 +5,7 @@ import {
   List, Link2, RotateCcw, Copy, Eye,
 } from "lucide-react";
 import { wmSaveSettings } from "./api";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -314,7 +315,10 @@ export function SignatureDesigner() {
     setF((p) => ({ ...p, [k]: e.target.value }));
 
   const designedHtml = useMemo(() => tpl.build(f), [tpl, f]);
-  const html = mode === "design" ? designedHtml : customHtml;
+  const rawHtml = mode === "design" ? designedHtml : customHtml;
+  // SEC: the "Raw HTML" tab lets a user paste arbitrary markup — sanitize before
+  // it's ever rendered (preview) or persisted (save), not just at one of the two.
+  const html = useMemo(() => sanitizeHtml(rawHtml), [rawHtml]);
 
   // Switch into a custom editor — seed it from the current design unless the user already edited.
   function enterCustom(next: Mode) {

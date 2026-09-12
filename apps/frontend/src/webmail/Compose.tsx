@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 
 interface Attachment { filename: string; contentBase64: string; contentType: string }
 export interface ComposeInitial { to?: string; cc?: string; subject?: string; html?: string; focusBody?: boolean }
@@ -152,7 +153,9 @@ export function Compose({ open, onClose, initial }: { open: boolean; onClose: ()
 
   async function insertSignature() {
     const s = await wmGetFullSettings().catch(() => null);
-    if (s?.signatureHtml && editorRef.current) editorRef.current.innerHTML += `<br/><br/>${s.signatureHtml}`;
+    // SEC: sanitize at insertion time too, not just when the signature was saved —
+    // a signature saved before sanitization was enforced must still be safe here.
+    if (s?.signatureHtml && editorRef.current) editorRef.current.innerHTML += `<br/><br/>${sanitizeHtml(s.signatureHtml)}`;
     else toast.info("No signature set yet — add one in Settings → Signatures.");
   }
 

@@ -122,11 +122,11 @@ export default async function tenancyRoutes(app: FastifyInstance) {
   });
   app.post("/notifications/:id/ack", async (req, reply) => {
     const { id } = req.params as { id: string };
-    return reply.send({ success: true, data: await acknowledgeNotification(id) });
+    return reply.send({ success: true, data: await acknowledgeNotification(id, req.user!.id) });
   });
   app.post("/notifications/:id/dismiss", async (req, reply) => {
     const { id } = req.params as { id: string };
-    return reply.send({ success: true, data: await dismissNotification(id) });
+    return reply.send({ success: true, data: await dismissNotification(id, req.user!.id) });
   });
   app.get("/notifications/settings/email", { preHandler: admin }, async (_req, reply) =>
     reply.send({ success: true, data: await getEmailAlertSettings() }),

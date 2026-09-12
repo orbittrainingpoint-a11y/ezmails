@@ -5,6 +5,8 @@ import { markOpened } from "../services/campaign.service.js";
 import { recordOpen } from "../services/tracking.service.js";
 import { getPublicLink, getAvailableSlots, createBooking } from "../services/booking.service.js";
 import { buildIcs } from "../lib/ics.js";
+import { hitLimit } from "../lib/ratelimit.js";
+import { AppError } from "../lib/errors.js";
 
 // 1x1 transparent GIF.
 const PIXEL = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");
@@ -35,6 +37,9 @@ export default async function publicRoutes(app: FastifyInstance) {
   });
 
   app.post("/public/bookings/:slug", async (req, reply) => {
+    // Unauthenticated by design — throttle per IP so a slug can't be flooded to fill every slot.
+    const limit = await hitLimit(`booking:create:ip:${req.ip}`, 10, 300);
+    if (!limit.ok) throw new AppError(429, "RATE_LIMITED", `Too many booking attempts. Try again in ${Math.ceil(limit.retryAfter / 60)} min.`);
     const { slug } = req.params as { slug: string };
     const body = z.object({ name: z.string().min(1), email: z.string().email(), startsAt: z.string(), notes: z.string().optional() }).parse(req.body);
     const booking = await createBooking(slug, body);
@@ -42,6 +47,10 @@ export default async function publicRoutes(app: FastifyInstance) {
   });
 
   app.get("/public/bookings/ics/:id", async (req, reply) => {
+    // Unauthenticated by design (no-account attendee flow) — throttle per IP so a bare
+    // booking id can't be mass-enumerated/brute-forced for other attendees' PII.
+    const limit = await hitLimit(`booking:ics:ip:${req.ip}`, 30, 300);
+    if (!limit.ok) throw new AppError(429, "RATE_LIMITED", "Too many requests.");
     const { id } = req.params as { id: string };
     const booking = await prisma.booking.findUnique({ where: { id }, include: { link: true } });
     if (!booking) return reply.status(404).send({ success: false, error: { code: "NOT_FOUND", message: "Not found." } });

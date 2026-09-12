@@ -100,11 +100,15 @@ export default async function mailRoutes(app: FastifyInstance) {
       .parse(req.query);
     const att = await getAttachment(req.creds!, folder, Number(uid), Number(index));
     if (!att) throw Errors.notFound("Attachment not found.");
-    // Inline by default so PDFs/images render in the previewer; ?download=1 forces a download.
-    const disp = download ? "attachment" : "inline";
+    // SEC: the MIME part's Content-Type is fully attacker-controlled (whoever sent the
+    // email can label anything as "application/pdf"). Serving it verbatim with
+    // Content-Disposition: inline lets a crafted attachment render as HTML/script in
+    // the app's own origin. Only honor inline rendering for a small allowlist, and for
+    // PDF only when the buffer itself actually starts with the PDF magic bytes.
+    const { contentType, disposition } = safeInlineContentType(att.contentType, att.content, download);
     return reply
-      .header("content-type", att.contentType || "application/octet-stream")
-      .header("content-disposition", `${disp}; filename="${att.filename.replace(/"/g, "")}"`)
+      .header("content-type", contentType)
+      .header("content-disposition", `${disposition}; filename="${att.filename.replace(/"/g, "")}"`)
       .header("x-content-type-options", "nosniff")
       .send(att.content);
   });
@@ -179,4 +183,28 @@ export default async function mailRoutes(app: FastifyInstance) {
     const { folder } = z.object({ folder: z.string().default("INBOX") }).parse(req.query);
     return reply.send({ success: true, data: await trashMessage(req.creds!, folder, Number(uid)) });
   });
+}
+
+const INLINE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+/**
+ * SEC: an attachment's declared Content-Type comes straight from the sender's own
+ * MIME headers, so it can't be trusted for what to do with the bytes. Only ever
+ * render inline (in the browser, same-origin) for a tight allowlist; PDF additionally
+ * requires the buffer to actually start with the PDF magic bytes. Everything else
+ * downloads as an octet-stream attachment regardless of what it claims to be.
+ */
+export function safeInlineContentType(
+  declaredType: string | undefined,
+  content: Buffer,
+  forceDownload: boolean,
+): { contentType: string; disposition: "inline" | "attachment" } {
+  if (forceDownload) return { contentType: declaredType || "application/octet-stream", disposition: "attachment" };
+
+  const type = (declaredType || "").toLowerCase();
+  if (INLINE_IMAGE_TYPES.has(type)) return { contentType: type, disposition: "inline" };
+  if (type === "application/pdf" && content.subarray(0, 5).toString("latin1") === "%PDF-") {
+    return { contentType: "application/pdf", disposition: "inline" };
+  }
+  return { contentType: declaredType || "application/octet-stream", disposition: "attachment" };
 }

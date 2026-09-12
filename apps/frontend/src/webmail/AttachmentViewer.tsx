@@ -86,7 +86,7 @@ export function AttachmentViewer({
         )}
 
         {kind === "pdf" && (
-          <iframe title={att.filename} src={url} className="h-full w-full max-w-5xl rounded-md bg-white" />
+          <iframe title={att.filename} src={url} sandbox="" className="h-full w-full max-w-5xl rounded-md bg-white" />
         )}
         {kind === "image" && (
           <img src={url} alt={att.filename} className="max-h-full max-w-full rounded-md object-contain shadow-2xl" />
@@ -202,10 +202,18 @@ function DocxPreview({ url, filename }: { url: string; filename: string }) {
 
   if (err) return <Failed url={url} filename={filename} />;
   if (html === null) return <Loading />;
+  // SEC: mammoth's output can carry attacker-controlled markup from the source
+  // .docx — render it the same sandboxed way the plain-HTML attachment preview
+  // already does (TextPreview's "html" branch), never dangerouslySetInnerHTML
+  // in the main document.
+  const styled = `<style>body{font-family:system-ui,sans-serif;font-size:14px;line-height:1.6;padding:24px;color:#111}h1{font-size:1.25rem;font-weight:700;margin-bottom:.5rem}h2{font-size:1.1rem;font-weight:600;margin-bottom:.5rem}p{margin-bottom:.5rem}table{border-collapse:collapse}td{border:1px solid #d1d5db;padding:2px 8px}ul{list-style:disc;padding-left:1.5rem}</style>${html}`;
   return (
-    <div className="h-full w-full max-w-3xl overflow-auto rounded-md bg-white px-8 py-6 text-sm leading-relaxed text-black [&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:mb-2 [&_table]:border-collapse [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1 [&_ul]:list-disc [&_ul]:pl-6">
-      <div dangerouslySetInnerHTML={{ __html: html }} />
-    </div>
+    <iframe
+      title={filename}
+      sandbox=""
+      srcDoc={styled}
+      className="h-full w-full max-w-3xl rounded-md bg-white"
+    />
   );
 }
 
@@ -261,9 +269,14 @@ function SheetPreview({ url, filename }: { url: string; filename: string }) {
           ))}
         </div>
       )}
-      <div
-        className="flex-1 overflow-auto p-2 text-xs text-black [&_table]:border-collapse [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1"
-        dangerouslySetInnerHTML={{ __html: html }}
+      {/* SEC: SheetJS's generated hyperlink markup doesn't escape cell/link content,
+          so this is sandboxed the same way as DocxPreview/TextPreview's html
+          branch — never rendered directly in the main document. */}
+      <iframe
+        title={filename}
+        sandbox=""
+        srcDoc={`<style>body{font-family:system-ui,sans-serif;font-size:12px;padding:8px;color:#111}table{border-collapse:collapse}td{border:1px solid #d1d5db;padding:2px 8px}</style>${html}`}
+        className="flex-1 border-0"
       />
     </div>
   );

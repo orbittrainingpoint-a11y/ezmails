@@ -1,6 +1,7 @@
 import { prisma, type NotificationLevel } from "@ezmails/db";
 import { broadcast } from "../lib/ws-hub.js";
 import { getSetting, setSetting } from "../lib/settings.js";
+import { Errors } from "../lib/errors.js";
 
 /**
  * Create an in-app notification and push it to connected admins in real time.
@@ -45,11 +46,20 @@ export async function listNotifications(userId: string, opts: { unreadOnly?: boo
   });
 }
 
-export async function acknowledgeNotification(id: string) {
+/** A user may only ack/dismiss their own targeted notification or a broadcast one — never another user's. */
+async function assertOwnedOrBroadcast(id: string, userId: string): Promise<void> {
+  const notif = await prisma.notification.findUnique({ where: { id }, select: { userId: true } });
+  if (!notif) throw Errors.notFound("Notification not found.");
+  if (notif.userId !== null && notif.userId !== userId) throw Errors.forbidden();
+}
+
+export async function acknowledgeNotification(id: string, userId: string) {
+  await assertOwnedOrBroadcast(id, userId);
   return prisma.notification.update({ where: { id }, data: { acknowledgedAt: new Date() } });
 }
 
-export async function dismissNotification(id: string) {
+export async function dismissNotification(id: string, userId: string) {
+  await assertOwnedOrBroadcast(id, userId);
   return prisma.notification.update({ where: { id }, data: { dismissedAt: new Date() } });
 }
 
