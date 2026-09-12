@@ -14,9 +14,16 @@ export default async function calendarRoutes(app: FastifyInstance) {
     const myEmail = me?.email?.toLowerCase();
     if (!myEmail) return reply.send({ success: true, data: [] });
 
+    // PERF: sharing is stored inside each mailbox's own prefs JSON blob (no
+    // dedicated share table/index exists), so finding "shared with me" means
+    // scanning other mailboxes' settings — there's no query that can filter
+    // this at the DB level without a real CalendarShare table (a bigger
+    // follow-up, not done here). Bounding it at least caps the worst case
+    // instead of scanning every mailbox on the platform on every request.
     const rows = await prisma.webmailSettings.findMany({
       where: { NOT: { mailboxId: req.creds!.mailboxId } },
       select: { mailboxId: true, prefs: true },
+      take: 5000,
     });
 
     type Hit = { ownerId: string; calId: string; name: string; color: string; perm: string; events: Mtg[] };

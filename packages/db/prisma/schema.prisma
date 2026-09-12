@@ -273,9 +273,17 @@ model Mailbox {
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz
 
-  domain       Domain               @relation(fields: [domainId], references: [id], onDelete: Cascade)
-  appPasswords MailboxAppPassword[]
-  passkeys     MailboxPasskey[]
+  domain          Domain               @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  appPasswords    MailboxAppPassword[]
+  passkeys        MailboxPasskey[]
+  webmailContact  WebmailContact[]
+  webmailSettings WebmailSettings?
+  devMail         DevMail[]
+  webmailRules    WebmailRule[]
+  webmailNotes    WebmailNote[]
+  emailTrackers   EmailTracker[]
+  campaigns       Campaign[]
+  bookingLinks    BookingLink[]
 
   @@index([domainId])
   @@index([email])
@@ -314,6 +322,8 @@ model EmailTracker {
   opens      Int       @default(0)
   lastOpenAt DateTime? @map("last_open_at") @db.Timestamptz
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  mailbox Mailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
 
   @@index([mailboxId])
   @@map("email_trackers")
@@ -485,6 +495,8 @@ model WebmailContact {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
+  mailbox Mailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
   @@index([mailboxId])
   @@map("webmail_contacts")
 }
@@ -504,6 +516,8 @@ model WebmailSettings {
   recoveryCodes   Json?     @map("recovery_codes") // array of sha256-hashed codes
   prefs           Json?
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  mailbox Mailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
 
   @@map("webmail_settings")
 }
@@ -529,6 +543,8 @@ model DevMail {
   attachments Json?
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  mailbox Mailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
   @@index([mailboxId, folder])
   @@map("dev_mail")
 }
@@ -546,6 +562,8 @@ model WebmailRule {
   sortOrder    Int      @default(0) @map("sort_order")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  mailbox Mailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+
   @@index([mailboxId])
   @@map("webmail_rules")
 }
@@ -561,6 +579,8 @@ model WebmailNote {
   pinned    Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  mailbox Mailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
 
   @@index([mailboxId, messageId])
   @@map("webmail_notes")
@@ -594,6 +614,7 @@ model Campaign {
   createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
+  mailbox    Mailbox             @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
   recipients CampaignRecipient[]
 
   @@index([mailboxId])
@@ -630,6 +651,7 @@ model BookingLink {
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
+  mailbox  Mailbox   @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
   bookings Booking[]
 
   @@index([mailboxId])
