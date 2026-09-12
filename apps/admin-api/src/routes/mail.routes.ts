@@ -12,6 +12,7 @@ import {
   addMembersSchema,
 } from "../schemas/mail.schema.js";
 import { requireRole } from "../plugins/rbac.js";
+import { ipRateLimit } from "../plugins/rate-limit.js";
 import { getScopedDomain, getScopedMailbox } from "../lib/scope.js";
 import { recordAudit } from "../services/audit.service.js";
 import { parseCsvWithHeader } from "../lib/csv.js";
@@ -138,7 +139,7 @@ export default async function mailRoutes(app: FastifyInstance) {
     return reply.send({ success: true, data: mbx });
   });
 
-  app.post("/mailboxes/:id/reset-password", async (req, reply) => {
+  app.post("/mailboxes/:id/reset-password", { preHandler: ipRateLimit("mbx-reset-pw", 10, 60) }, async (req, reply) => {
     const { id } = req.params as { id: string };
     await getScopedMailbox(req.user!, id);
     const { password } = resetPasswordSchema.parse(req.body);

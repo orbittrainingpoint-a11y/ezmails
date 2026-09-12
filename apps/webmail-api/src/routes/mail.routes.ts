@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { Errors } from "../lib/errors.js";
+import { Errors, AppError } from "../lib/errors.js";
+import { hitLimit } from "../lib/ratelimit.js";
 import {
   listFolders,
   folderCounts,
@@ -114,6 +115,8 @@ export default async function mailRoutes(app: FastifyInstance) {
   });
 
   app.post("/messages", async (req, reply) => {
+    const limit = await hitLimit(`messages:send:mbx:${req.creds!.mailboxId}`, 60, 300);
+    if (!limit.ok) throw new AppError(429, "RATE_LIMITED", `Sending too fast. Try again in ${Math.ceil(limit.retryAfter / 60)} min.`);
     const body = sendSchema.parse(req.body);
 
     // Schedule for later if a future time was given.
@@ -143,7 +146,17 @@ export default async function mailRoutes(app: FastifyInstance) {
       .header("content-disposition", `attachment; filename="ezmail-backup-${stamp}.mbox"`)
       .header("cache-control", "no-store");
     // Run the export in the background, piping into the response as it goes.
-    exportMbox(req.creds!, stream).catch(() => stream.destroy());
+    // If it fails mid-stream, the 200 + headers are already sent, so surface the
+    // failure as a trailing synthetic "message" in the mbox itself (rather than
+    // just cutting the connection) — otherwise a truncated file looks complete.
+    exportMbox(req.creds!, stream).catch((err) => {
+      const reason = err instanceof Error ? err.message : String(err);
+      stream.write(
+        `From MAILER-DAEMON ${new Date().toUTCString()}\nSubject: BACKUP INCOMPLETE\n\n` +
+          `This export stopped before finishing: ${reason}\nSome messages may be missing — please retry the export.\n\n`,
+      );
+      stream.end();
+    });
     return reply.send(stream);
   });
 

@@ -1,8 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { Errors } from "../lib/errors.js";
+import { Errors, AppError } from "../lib/errors.js";
 import { parseCsvWithHeader } from "../lib/csv.js";
 import { listContacts, createContact, updateContact, deleteContact } from "../services/contact.service.js";
+import { hitLimit } from "../lib/ratelimit.js";
+
+const MAX_IMPORT_ROWS = 2000;
 
 const contactSchema = z.object({
   name: z.string().min(1),
@@ -37,8 +40,13 @@ export default async function contactRoutes(app: FastifyInstance) {
 
   // Import contacts from CSV (columns: name, email).
   app.post("/contacts/import", async (req, reply) => {
+    const limit = await hitLimit(`contacts:import:mbx:${req.creds!.mailboxId}`, 5, 300);
+    if (!limit.ok) throw new AppError(429, "RATE_LIMITED", `Too many imports. Try again in ${Math.ceil(limit.retryAfter / 60)} min.`);
     const { csv } = z.object({ csv: z.string().min(1) }).parse(req.body);
     const rows = parseCsvWithHeader(csv);
+    if (rows.length > MAX_IMPORT_ROWS) {
+      throw Errors.badRequest(`Too many rows — import at most ${MAX_IMPORT_ROWS} contacts at a time.`);
+    }
     let imported = 0;
     for (const r of rows) {
       const email = (r["email"] ?? "").trim().toLowerCase();

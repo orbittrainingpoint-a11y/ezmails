@@ -6,6 +6,12 @@ import { env } from "../config/env.js";
 import { AppError } from "../lib/errors.js";
 import type { WebmailCreds } from "../lib/session.js";
 
+const MAX_RECIPIENTS_PER_IMPORT = 2000;
+// Small pacing delay between sends so a campaign can't blast the platform's
+// outbound relay unthrottled (abuse/reputation risk flagged in the audit).
+const SEND_DELAY_MS = 250;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function listCampaigns(mailboxId: string) {
   const rows = await prisma.campaign.findMany({
     where: { mailboxId },
@@ -51,6 +57,9 @@ export async function importRecipients(mailboxId: string, campaignId: string, cs
   if (!c) throw new AppError(404, "NOT_FOUND", "Campaign not found.");
 
   const rows = parseCsvWithHeader(csv);
+  if (rows.length > MAX_RECIPIENTS_PER_IMPORT) {
+    throw new AppError(400, "BAD_REQUEST", `Too many rows — import at most ${MAX_RECIPIENTS_PER_IMPORT} recipients at a time.`);
+  }
   const valid = rows.filter((r) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r["email"] ?? ""));
   await prisma.campaignRecipient.createMany({
     data: valid.map((r) => {
@@ -89,6 +98,7 @@ export async function sendCampaign(creds: WebmailCreds, mailboxId: string, campa
     } catch {
       await prisma.campaignRecipient.update({ where: { id: r.id }, data: { status: "failed" } });
     }
+    if (!env.WEBMAIL_DEV_BYPASS_IMAP) await sleep(SEND_DELAY_MS);
   }
 
   await prisma.campaign.update({ where: { id: campaignId }, data: { status: "sent", sentAt: new Date() } });

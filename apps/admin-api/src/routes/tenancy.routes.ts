@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { UserRole } from "@ezmails/db";
 import { requireRole } from "../plugins/rbac.js";
+import { ipRateLimit } from "../plugins/rate-limit.js";
 import { recordAudit } from "../services/audit.service.js";
 import {
   createCustomerSchema,
@@ -166,7 +167,7 @@ export default async function tenancyRoutes(app: FastifyInstance) {
   app.get("/api-tokens", async (req, reply) =>
     reply.send({ success: true, data: await listTokens(req.user!.id) }),
   );
-  app.post("/api-tokens", async (req, reply) => {
+  app.post("/api-tokens", { preHandler: ipRateLimit("api-token-create", 10, 60) }, async (req, reply) => {
     const { name, expiresAt } = createTokenSchema.parse(req.body);
     const data = await createToken(req.user!.id, name, expiresAt ? new Date(expiresAt) : undefined);
     await recordAudit({ userId: req.user!.id, action: "api_token.create", resourceType: "api_token", resourceId: data.id, ipAddress: req.ip });
