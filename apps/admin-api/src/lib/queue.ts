@@ -31,4 +31,19 @@ export function createWorker(processor: ConstructorParameters<typeof Worker>[1])
   return new Worker(JOBS_QUEUE, processor, { connection });
 }
 
+// DOM-006b: backoff schedule (ms) for re-checking a domain's DNS right after
+// it's created or its sourceType changes, instead of waiting for the flat
+// 15-minute sweep. Self-terminates once every record is valid (see jobs.ts).
+const DNS_RECHECK_BACKOFF_MS = [0, 60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000];
+export const DNS_RECHECK_MAX_ATTEMPT = DNS_RECHECK_BACKOFF_MS.length - 1;
+
+export async function scheduleDnsRecheck(domainId: string, attempt = 0): Promise<void> {
+  const delay = DNS_RECHECK_BACKOFF_MS[Math.min(attempt, DNS_RECHECK_MAX_ATTEMPT)];
+  await jobsQueue.add(
+    "dns:validate-domain",
+    { domainId, attempt },
+    { delay, jobId: `dns-validate-${domainId}-${attempt}` },
+  );
+}
+
 export { connection as bullConnection };

@@ -200,6 +200,9 @@ model Domain {
   suspendReason   String?      @map("suspend_reason")
   spamTagScore    Int?         @map("spam_tag_score")
   spamRejectScore Int?         @map("spam_reject_score")
+  lastDeliveryTestAt     DateTime? @map("last_delivery_test_at") @db.Timestamptz
+  lastDeliveryTestStatus String?   @map("last_delivery_test_status") @db.VarChar(32)
+  lastDeliveryTestDetail String?   @map("last_delivery_test_detail")
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz
 

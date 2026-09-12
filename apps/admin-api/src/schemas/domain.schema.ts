@@ -21,6 +21,7 @@ export const createDomainSchema = z.object({
 export const updateDomainSchema = z.object({
   ownerId: z.string().uuid().nullable().optional(),
   nodeId: z.string().uuid().nullable().optional(),
+  sourceType: z.enum(["vps_hosted", "external"]).optional(),
   maxMailboxes: z.number().int().positive().optional(),
   storageQuota: z.coerce.bigint().positive().optional(),
   sendRate: z.number().int().positive().optional(),
@@ -28,6 +29,10 @@ export const updateDomainSchema = z.object({
   webmailEnabled: z.boolean().optional(),
   spamTagScore: z.number().int().optional(),
   spamRejectScore: z.number().int().optional(),
+});
+
+export const deliveryTestSchema = z.object({
+  mailboxId: z.string().uuid(),
 });
 
 export const suspendDomainSchema = z.object({

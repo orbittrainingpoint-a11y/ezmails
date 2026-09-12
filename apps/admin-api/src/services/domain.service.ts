@@ -1,7 +1,8 @@
 import { prisma, type Prisma } from "@ezmails/db";
 import { Errors } from "../lib/errors.js";
 import { createInitialDkim } from "./dkim.service.js";
-import { buildDnsRecords } from "./dns.service.js";
+import { buildDnsRecords, syncDnsRecordsForSourceType } from "./dns.service.js";
+import { scheduleDnsRecheck } from "../lib/queue.js";
 
 export interface CreateDomainInput {
   domainName: string;
@@ -39,7 +40,7 @@ export async function createDomain(input: CreateDomainInput) {
 
   const dkim = await createInitialDkim(domain.id, domain.domainName);
 
-  const records = buildDnsRecords(domain.domainName, dkim);
+  const records = buildDnsRecords(domain.domainName, dkim, domain.sourceType);
   await prisma.dnsRecord.createMany({
     data: records.map((r) => ({
       domainId: domain.id,
@@ -49,6 +50,8 @@ export async function createDomain(input: CreateDomainInput) {
       status: "unchecked" as const,
     })),
   });
+
+  await scheduleDnsRecheck(domain.id, 0);
 
   return getDomainDetail(domain.id);
 }
@@ -96,6 +99,7 @@ export async function getDomainDetail(id: string) {
 const DOMAIN_PATCH_FIELDS = [
   "nodeId",
   "ownerId",
+  "sourceType",
   "maxMailboxes",
   "storageQuota",
   "sendRate",
@@ -110,7 +114,13 @@ export async function updateDomain(id: string, patch: Record<string, unknown>) {
   for (const key of DOMAIN_PATCH_FIELDS) {
     if (patch[key] !== undefined) (data as Record<string, unknown>)[key] = patch[key];
   }
-  await prisma.domain.update({ where: { id }, data });
+  const domain = await prisma.domain.update({ where: { id }, data });
+
+  if (patch.sourceType !== undefined) {
+    await syncDnsRecordsForSourceType(id, domain.domainName, domain.sourceType);
+    await scheduleDnsRecheck(id, 0);
+  }
+
   return getDomainDetail(id);
 }
 

@@ -5,6 +5,7 @@ import {
   updateDomainSchema,
   suspendDomainSchema,
   listDomainsQuery,
+  deliveryTestSchema,
 } from "../schemas/domain.schema.js";
 import { sendSystemMail } from "../lib/mailer.js";
 import { requireRole } from "../plugins/rbac.js";
@@ -20,6 +21,7 @@ import {
 } from "../services/domain.service.js";
 import { validateDomainDns } from "../services/dns.service.js";
 import { listDkimKeys, rotateDkim } from "../services/dkim.service.js";
+import { runDeliveryTest } from "../services/delivery-test.service.js";
 
 export default async function domainRoutes(app: FastifyInstance) {
   // All domain routes require authentication.
@@ -135,6 +137,23 @@ export default async function domainRoutes(app: FastifyInstance) {
     await getScopedDomain(req.user!, id);
     const results = await validateDomainDns(id);
     return reply.send({ success: true, data: results });
+  });
+
+  // ── Live send/receive delivery test (DOM-020) ──
+  app.post("/:id/dns/test-delivery", { preHandler: canManage }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const domain = await getScopedDomain(req.user!, id);
+    const { mailboxId } = deliveryTestSchema.parse(req.body);
+    await runDeliveryTest(id, mailboxId);
+    await recordAudit({
+      userId: req.user!.id,
+      action: "domain.dns.test_delivery",
+      resourceType: "domain",
+      resourceId: id,
+      ipAddress: req.ip,
+      metadata: { domainName: domain.domainName, mailboxId },
+    });
+    return reply.status(202).send({ success: true, data: { started: true } });
   });
 
   // ── Email the DNS setup instructions to the domain owner / customer ──

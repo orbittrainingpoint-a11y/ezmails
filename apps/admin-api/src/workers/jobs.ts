@@ -1,5 +1,5 @@
 import { prisma } from "@ezmails/db";
-import { createWorker, scheduleRepeatableJobs } from "../lib/queue.js";
+import { createWorker, scheduleRepeatableJobs, scheduleDnsRecheck, DNS_RECHECK_MAX_ATTEMPT } from "../lib/queue.js";
 import { validateDomainDns } from "../services/dns.service.js";
 import { pollNodeHealth } from "../services/node.service.js";
 import { pruneOldLogs } from "../services/log.service.js";
@@ -17,6 +17,15 @@ export async function startWorkers(logger: { info: (m: string) => void; error: (
         const domains = await prisma.domain.findMany({ where: { isActive: true }, select: { id: true } });
         for (const d of domains) await validateDomainDns(d.id).catch(() => {});
         return { checked: domains.length };
+      }
+      case "dns:validate-domain": {
+        const { domainId, attempt } = job.data as { domainId: string; attempt: number };
+        const results = await validateDomainDns(domainId).catch(() => []);
+        const allValid = results.length > 0 && results.every((r) => r.status === "valid");
+        if (!allValid && attempt < DNS_RECHECK_MAX_ATTEMPT) {
+          await scheduleDnsRecheck(domainId, attempt + 1);
+        }
+        return { domainId, attempt, allValid };
       }
       case "node:health":
         await pollNodeHealth();

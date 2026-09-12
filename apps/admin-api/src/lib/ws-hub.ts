@@ -20,7 +20,7 @@ export interface WsLike {
 const CHANNEL = "ezmails:events";
 
 interface WsEvent {
-  event: "node:stats" | "queue:update" | "alert";
+  event: "node:stats" | "queue:update" | "alert" | "domain:delivery-test";
   data: unknown;
 }
 

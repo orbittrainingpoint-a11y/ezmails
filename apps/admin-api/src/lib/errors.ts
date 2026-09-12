@@ -32,6 +32,7 @@ export const Errors = {
   invalidToken: (msg = "Token is invalid or expired.") => new AppError(401, "INVALID_TOKEN", msg),
   notFound: (msg = "Resource not found.") => new AppError(404, "NOT_FOUND", msg),
   conflict: (msg: string) => new AppError(409, "CONFLICT", msg),
+  badRequest: (msg: string) => new AppError(400, "BAD_REQUEST", msg),
 };
 
 /** Central Fastify error handler — converts everything to the standard envelope. */
